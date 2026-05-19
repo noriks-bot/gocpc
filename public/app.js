@@ -108,7 +108,8 @@ async function pageDashboard() {
   const content = pageShell('Dashboard');
   try {
     const data = await api(`/api/countries-summary?range=${getRange()}`);
-    const tot = data.countries.reduce((a, c) => {
+    const countries = data.countries || data.accounts || [];
+    const tot = countries.reduce((a, c) => {
       if (c.error) return a;
       a.cost += (c.cost || 0);
       a.clicks += (c.clicks || 0);
@@ -124,39 +125,52 @@ async function pageDashboard() {
 
     content.innerHTML = `
       <div class="kpis">
-        <div class="kpi"><div class="label">Total spend</div><div class="value">${eur(tot.cost)}</div></div>
-        <div class="kpi"><div class="label">Conversions</div><div class="value">${fmt(tot.conversions, 1)}</div></div>
-        <div class="kpi"><div class="label">Conv. value</div><div class="value">${eur(tot.conversionsValue)}</div></div>
-        <div class="kpi"><div class="label">ROAS</div><div class="value">${fmt(roas, 2)}x</div></div>
+        <div class="kpi accent"><div class="label">Skupna poraba</div><div class="value">${eur(tot.cost)}</div></div>
+        <div class="kpi"><div class="label">Impressions</div><div class="value">${fmt(tot.impressions)}</div></div>
+        <div class="kpi"><div class="label">Kliki</div><div class="value">${fmt(tot.clicks)}</div><div class="sub">CTR ${pct(ctr)}</div></div>
+        <div class="kpi"><div class="label">Konverzije</div><div class="value">${fmt(tot.conversions, 0)}</div></div>
         <div class="kpi"><div class="label">CPA</div><div class="value">${eur(cpa)}</div></div>
-        <div class="kpi"><div class="label">Clicks</div><div class="value">${fmt(tot.clicks)}</div><div class="sub">CTR ${pct(ctr)}</div></div>
+        <div class="kpi accent"><div class="label">ROAS</div><div class="value">${fmt(roas, 2)}x</div></div>
       </div>
 
-      <h3 class="section">Per country</h3>
+      <h3 class="section">Po državah</h3>
       <div class="table-wrap">
         <table>
           <thead><tr>
-            <th>Country</th><th>Account</th>
-            <th class="num">Spend</th><th class="num">Clicks</th>
-            <th class="num">Impressions</th><th class="num">Conv.</th>
-            <th class="num">Conv. value</th><th class="num">ROAS</th>
+            <th>Država</th>
+            <th class="num">Impr.</th><th class="num">Kliki</th>
+            <th class="num">Cost</th><th class="num">Konv.</th>
+            <th class="num">Conv. value</th><th class="num">CPA</th><th class="num">ROAS</th>
           </tr></thead>
           <tbody>
-            ${data.countries.map(c => {
+            ${countries.map(c => {
               if (c.error) return `<tr><td><span class="flag">${c.country}</span></td><td colspan="7" style="color:#ff8a8a;font-size:12px">${escHTML(c.error)}</td></tr>`;
               const r = c.cost ? (c.conversionsValue / c.cost) : 0;
-              return `<tr>
+              const cp = c.conversions ? (c.cost / c.conversions) : 0;
+              return `<tr style="cursor:pointer" onclick="location.hash='#/account/${c.country}'">
                 <td><span class="flag">${c.country}</span> ${escHTML(COUNTRY_NAMES[c.country] || '')}</td>
-                <td style="color:var(--text-3);font-size:12px">${c.customerId}</td>
-                <td class="num">${eur(c.cost)}</td>
-                <td class="num">${fmt(c.clicks)}</td>
                 <td class="num">${fmt(c.impressions)}</td>
-                <td class="num">${fmt(c.conversions, 1)}</td>
+                <td class="num">${fmt(c.clicks)}</td>
+                <td class="num">${eur(c.cost)}</td>
+                <td class="num">${fmt(c.conversions, 0)}</td>
                 <td class="num">${eur(c.conversionsValue)}</td>
-                <td class="num">${fmt(r, 2)}x</td>
+                <td class="num">${eur(cp)}</td>
+                <td class="num" style="color:${r>=3?'var(--green)':(r>=1?'var(--text)':'var(--red)')}">${fmt(r, 2)}x</td>
               </tr>`;
             }).join('')}
           </tbody>
+          <tfoot>
+            <tr>
+              <td class="label-cell">SKUPAJ</td>
+              <td class="num">${fmt(tot.impressions)}</td>
+              <td class="num">${fmt(tot.clicks)}</td>
+              <td class="num">${eur(tot.cost)}</td>
+              <td class="num">${fmt(tot.conversions, 0)}</td>
+              <td class="num">${eur(tot.conversionsValue)}</td>
+              <td class="num">${eur(cpa)}</td>
+              <td class="num">${fmt(roas, 2)}x</td>
+            </tr>
+          </tfoot>
         </table>
       </div>
     `;
@@ -169,6 +183,7 @@ async function pageAccounts() {
   const content = pageShell('Računi / države');
   try {
     const data = await api(`/api/countries-summary?range=${getRange()}`);
+    const countries = data.countries || data.accounts || [];
     content.innerHTML = `
       <div class="notice">Klikni na državo za podrobne kampanje.</div>
       <div class="table-wrap">
@@ -179,7 +194,7 @@ async function pageAccounts() {
             <th class="num">Conv. value</th><th class="num">ROAS</th>
           </tr></thead>
           <tbody>
-            ${data.countries.map(c => {
+            ${countries.map(c => {
               if (c.error) return `<tr><td><span class="flag">${c.country}</span></td><td colspan="5" style="color:#ff8a8a;font-size:12px">${escHTML(c.error)}</td></tr>`;
               const r = c.cost ? (c.conversionsValue / c.cost) : 0;
               return `<tr style="cursor:pointer" onclick="location.hash='#/account/${c.country}'">
@@ -249,33 +264,82 @@ async function pageCampaigns() {
   const content = pageShell('Kampanje (vse države)');
   try {
     const data = await api(`/api/campaigns?range=${getRange()}`);
+    const campaigns = data.campaigns || [];
+    const total = data.total != null ? data.total : campaigns.length;
+    const countries = [...new Set(campaigns.map(c => c.country))];
+    const tot = campaigns.reduce((a, c) => {
+      if (c.error) return a;
+      a.cost += (c.cost || 0); a.clicks += (c.clicks || 0);
+      a.impressions += (c.impressions || 0); a.conversions += (c.conversions || 0);
+      a.conversionsValue += (c.conversionsValue || 0);
+      return a;
+    }, { cost: 0, clicks: 0, impressions: 0, conversions: 0, conversionsValue: 0 });
+    const totRoas = tot.cost ? tot.conversionsValue / tot.cost : 0;
+    const totCpa = tot.conversions ? tot.cost / tot.conversions : 0;
+
     content.innerHTML = `
-      <div class="notice">Skupaj <strong>${data.total}</strong> kampanj v ${Object.keys(APP_ACCOUNTS).length} državah, sortirano po porabi.</div>
+      <div class="notice">
+        Skupaj <strong>${total}</strong> kampanj v ${countries.length} državah (${countries.join(', ')}), sortirano po porabi.
+      </div>
+      <div class="filter-bar" style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">
+        <button class="filter-btn active" data-filter="all">VSE (${campaigns.length})</button>
+        <button class="filter-btn" data-filter="ENABLED">ENABLED (${campaigns.filter(c=>c.status==='ENABLED').length})</button>
+        <button class="filter-btn" data-filter="PAUSED">PAUSED (${campaigns.filter(c=>c.status==='PAUSED').length})</button>
+        <button class="filter-btn" data-filter="REMOVED">REMOVED (${campaigns.filter(c=>c.status==='REMOVED').length})</button>
+      </div>
       <div class="table-wrap">
-        <table>
+        <table id="campaignsTable">
           <thead><tr>
             <th>Country</th><th>Campaign</th><th>Status</th><th>Type</th>
-            <th class="num">Spend</th><th class="num">Clicks</th>
-            <th class="num">Conv.</th><th class="num">ROAS</th>
+            <th class="num">Impr.</th><th class="num">Kliki</th>
+            <th class="num">Spend</th><th class="num">Konv.</th>
+            <th class="num">CPA</th><th class="num">ROAS</th>
           </tr></thead>
           <tbody>
-            ${data.campaigns.length ? data.campaigns.map(c => {
+            ${campaigns.length ? campaigns.map(c => {
+              if (c.error) return `<tr data-status="ERROR"><td><span class="flag">${c.country}</span></td><td colspan="9" style="color:#ff8a8a;font-size:12px">${escHTML(c.error)}</td></tr>`;
               const r = c.cost ? (c.conversionsValue / c.cost) : 0;
-              return `<tr>
+              const cp = c.conversions ? (c.cost / c.conversions) : 0;
+              return `<tr data-status="${escHTML(c.status || '')}">
                 <td><span class="flag">${c.country}</span></td>
-                <td>${escHTML(c.name || '–')}</td>
+                <td style="font-weight:500;color:var(--text)">${escHTML(c.name || '–')}</td>
                 <td><span class="status-pill ${(c.status || '').toLowerCase()}">${escHTML(c.status || '–')}</span></td>
                 <td style="font-size:11px;color:var(--text-3)">${escHTML(c.type || '–')}</td>
-                <td class="num">${eur(c.cost)}</td>
+                <td class="num">${fmt(c.impressions)}</td>
                 <td class="num">${fmt(c.clicks)}</td>
-                <td class="num">${fmt(c.conversions, 1)}</td>
-                <td class="num">${fmt(r, 2)}x</td>
+                <td class="num">${eur(c.cost)}</td>
+                <td class="num">${fmt(c.conversions, 0)}</td>
+                <td class="num">${eur(cp)}</td>
+                <td class="num" style="color:${r>=3?'var(--green)':(r>=1?'var(--text)':(c.cost>0?'var(--red)':'var(--text-3)'))}">${fmt(r, 2)}x</td>
               </tr>`;
-            }).join('') : '<tr><td colspan="8" style="text-align:center;padding:30px;color:var(--text-3)">No campaigns</td></tr>'}
+            }).join('') : '<tr><td colspan="10" style="text-align:center;padding:30px;color:var(--text-3)">No campaigns</td></tr>'}
           </tbody>
+          <tfoot>
+            <tr>
+              <td colspan="4" class="label-cell">SKUPAJ ${total}</td>
+              <td class="num">${fmt(tot.impressions)}</td>
+              <td class="num">${fmt(tot.clicks)}</td>
+              <td class="num">${eur(tot.cost)}</td>
+              <td class="num">${fmt(tot.conversions, 0)}</td>
+              <td class="num">${eur(totCpa)}</td>
+              <td class="num">${fmt(totRoas, 2)}x</td>
+            </tr>
+          </tfoot>
         </table>
       </div>
     `;
+
+    // filter
+    $$('.filter-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        $$('.filter-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        const f = btn.dataset.filter;
+        $$('#campaignsTable tbody tr').forEach(tr => {
+          tr.style.display = (f === 'all' || tr.dataset.status === f) ? '' : 'none';
+        });
+      });
+    });
   } catch (e) {
     content.innerHTML = `<div class="error">${escHTML(e.message)}</div>`;
   }

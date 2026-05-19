@@ -101,7 +101,7 @@ app.get('/api/countries-summary', requireAuth, async (req, res) => {
       out.push({ country, customerId, error: e.message });
     }
   }
-  res.json({ range, accounts: out });
+  res.json({ range, countries: out });
 });
 
 app.get('/api/account/:country', requireAuth, async (req, res) => {
@@ -133,7 +133,54 @@ app.get('/api/campaigns', requireAuth, async (req, res) => {
       out.push({ country, customerId, error: e.message });
     }
   }
-  res.json({ range, campaigns: out });
+  out.sort((a, b) => (b.cost || 0) - (a.cost || 0));
+  res.json({ range, total: out.length, campaigns: out });
+});
+
+// ----- API: campaign mutations -----
+function resolveCustomerId(country) {
+  return accounts[(country || '').toUpperCase()];
+}
+
+app.post('/api/campaign/:country/:campaignId/status', requireAuth, async (req, res) => {
+  const customerId = resolveCustomerId(req.params.country);
+  if (!customerId) return res.status(404).json({ error: 'unknown country' });
+  const { status } = req.body || {};
+  if (!['ENABLED', 'PAUSED'].includes(status)) {
+    return res.status(400).json({ error: 'status must be ENABLED or PAUSED' });
+  }
+  try {
+    const result = await gads.updateCampaignStatus(customerId, req.params.campaignId, status);
+    res.json({ ok: true, status, result });
+  } catch (e) {
+    console.error('status update error', e);
+    res.status(500).json({ error: e.message, body: e.body });
+  }
+});
+
+app.post('/api/campaign/:country/:campaignId/budget', requireAuth, async (req, res) => {
+  const customerId = resolveCustomerId(req.params.country);
+  if (!customerId) return res.status(404).json({ error: 'unknown country' });
+  const { dailyBudgetEur, budgetResource } = req.body || {};
+  const amount = parseFloat(dailyBudgetEur);
+  if (!amount || amount <= 0) return res.status(400).json({ error: 'dailyBudgetEur > 0 required' });
+  let resource = budgetResource;
+  try {
+    // If no budgetResource provided, look it up
+    if (!resource) {
+      const rows = await gads.search(
+        customerId,
+        `SELECT campaign.campaign_budget FROM campaign WHERE campaign.id = ${req.params.campaignId}`
+      );
+      resource = rows[0]?.campaign?.campaignBudget;
+      if (!resource) return res.status(404).json({ error: 'budget resource not found' });
+    }
+    const result = await gads.updateCampaignBudget(customerId, resource, amount);
+    res.json({ ok: true, dailyBudgetEur: amount, budgetResource: resource, result });
+  } catch (e) {
+    console.error('budget update error', e);
+    res.status(500).json({ error: e.message, body: e.body });
+  }
 });
 
 // ----- API: upload new campaign -----

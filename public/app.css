@@ -63,11 +63,20 @@ nav a.active{background:var(--bg-3);color:var(--accent)}
 .error{background:#3a0a0a;border:1px solid #5a1414;color:#ff8a8a;padding:12px 14px;border-radius:6px;font-size:13px;margin-bottom:16px}
 .success{background:#0d2818;border:1px solid #1a4a2c;color:#4ade80;padding:12px 14px;border-radius:6px;font-size:13px;margin-bottom:16px}
 
-.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px;margin-bottom:32px}
-.kpi{background:var(--bg-2);border:1px solid var(--border);border-radius:10px;padding:18px}
-.kpi .label{font-size:11px;color:var(--text-3);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px}
-.kpi .value{font-size:26px;font-weight:800;letter-spacing:-1px}
-.kpi .sub{font-size:12px;color:var(--text-3);margin-top:4px}
+.kpis{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:12px;margin-bottom:28px}
+@media (max-width:1200px){.kpis{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media (max-width:680px){.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.kpi{
+  background:linear-gradient(180deg,var(--bg-2) 0%,#080808 100%);
+  border:1px solid var(--border);border-radius:10px;padding:14px 16px;
+  position:relative;overflow:hidden;min-width:0
+}
+.kpi::before{content:"";position:absolute;left:0;top:0;height:2px;width:100%;background:var(--accent);opacity:.4}
+.kpi .label{font-size:10px;color:var(--text-3);text-transform:uppercase;letter-spacing:1.4px;margin-bottom:6px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.kpi .value{font-size:22px;font-weight:800;letter-spacing:-.5px;line-height:1.1;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.kpi .sub{font-size:11px;color:var(--text-3);margin-top:5px;letter-spacing:.3px}
+.kpi.accent{background:linear-gradient(180deg,#1a1500 0%,#080800 100%);border-color:#3a3100}
+.kpi.accent .value{color:var(--accent)}
 
 .table-wrap{background:var(--bg-2);border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:24px}
 table{width:100%;border-collapse:collapse;font-size:13px}
@@ -77,6 +86,15 @@ td{padding:12px 14px;border-bottom:1px solid var(--border);color:var(--text-2)}
 tbody tr:last-child td{border-bottom:none}
 tbody tr:hover{background:var(--bg-3)}
 td.num,th.num{text-align:right;font-variant-numeric:tabular-nums;font-weight:500;color:var(--text)}
+th.sortable{cursor:pointer;user-select:none;position:relative;transition:color .15s}
+th.sortable:hover{color:var(--accent)}
+th.sortable::after{content:'⇅';margin-left:6px;opacity:.35;font-size:10px}
+th.sortable.sort-asc::after{content:'▲';opacity:.9;color:var(--accent)}
+th.sortable.sort-desc::after{content:'▼';opacity:.9;color:var(--accent)}
+tfoot{background:var(--bg-3);border-top:2px solid var(--border-2)}
+tfoot td{padding:13px 14px;font-weight:800;color:var(--text);font-size:13px;border-bottom:none;text-transform:uppercase;letter-spacing:.5px}
+tfoot td.label-cell{color:var(--accent);font-size:11px;letter-spacing:1.5px}
+tfoot td.num{font-weight:800;color:var(--text)}
 .flag{display:inline-block;padding:3px 8px;background:var(--bg-3);border-radius:4px;font-size:11px;font-weight:700;letter-spacing:1px;color:var(--text)}
 .status-pill{display:inline-block;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px}
 .status-pill.enabled{background:#0d2818;color:#4ade80}
@@ -108,5 +126,13 @@ button.primary:disabled{opacity:.5;cursor:wait}
 
 .notice{background:var(--bg-2);border:1px solid var(--border);border-left:3px solid var(--accent);padding:12px 16px;border-radius:6px;font-size:13px;color:var(--text-2);margin-bottom:20px}
 .notice strong{color:var(--accent)}
+
+.filter-btn{
+  background:var(--bg-2);color:var(--text-2);border:1px solid var(--border-2);
+  padding:7px 14px;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;
+  letter-spacing:.8px;text-transform:uppercase;font-family:inherit;transition:all .15s
+}
+.filter-btn:hover{border-color:var(--accent);color:var(--text)}
+.filter-btn.active{background:var(--accent);color:#000;border-color:var(--accent)}
 
 .json-debug{background:var(--bg-2);border:1px solid var(--border);border-radius:6px;padding:12px;font-family:ui-monospace,Menlo,monospace;font-size:11px;color:var(--text-3);overflow:auto;max-height:300px;white-space:pre-wrap;margin-top:12px}
