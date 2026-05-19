@@ -147,4 +147,8 @@ td.actions{white-space:nowrap;text-align:right}
 .btn-toggle:disabled,.btn-budget:disabled{opacity:.4;cursor:wait}
 .budget-display{font-weight:600;color:var(--text)}
 
+.cache-badge{display:inline-block;margin-left:10px;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600;letter-spacing:.3px;vertical-align:middle}
+.cache-badge.stale{background:#2a1f08;color:#fbbf24;border:1px solid #4a3a14}
+.cache-badge.fresh{background:#0d2818;color:#4ade80;border:1px solid #14441f}
+
 .json-debug{background:var(--bg-2);border:1px solid var(--border);border-radius:6px;padding:12px;font-family:ui-monospace,Menlo,monospace;font-size:11px;color:var(--text-3);overflow:auto;max-height:300px;white-space:pre-wrap;margin-top:12px}

@@ -411,6 +411,8 @@ function renderAccountDetail(content, data, meta, country) {
         <div class="kpi"><div class="label">ROAS</div><div class="value">${fmt(r, 2)}x</div></div>
       </div>
 
+      <div class="notice" style="margin-bottom:16px">${cacheBadge(meta)}</div>
+
       <h3 class="section">Campaigns (${data.campaigns.length})</h3>
       <div class="table-wrap">
         <table data-sortable>
