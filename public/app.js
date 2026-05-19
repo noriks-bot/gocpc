@@ -198,7 +198,7 @@ function cacheBadge(meta) {
   return `<span class="cache-badge fresh">✓ live</span>`;
 }
 
-let CURRENT_RANGE = 'LAST_30_DAYS';
+let CURRENT_RANGE = localStorage.getItem('gocpc:range') || 'LAST_30_DAYS';
 function getRange() {
   const v = $('#rangeSel')?.value;
   if (v) CURRENT_RANGE = v;
@@ -234,6 +234,7 @@ function pageShell(title, withRange = true) {
     if (sel) sel.value = CURRENT_RANGE;
     sel.addEventListener('change', (e) => {
       CURRENT_RANGE = e.target.value;
+      try { localStorage.setItem('gocpc:range', CURRENT_RANGE); } catch (err) {}
       router();
     });
     $('#refreshBtn').addEventListener('click', async () => {

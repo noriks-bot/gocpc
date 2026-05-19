@@ -68,7 +68,13 @@ function cacheInvalidate(prefix) {
   for (const k of cacheStore.keys()) {
     if (k.startsWith(prefix)) cacheStore.delete(k);
   }
+  for (const k of inflight.keys()) {
+    if (k.startsWith(prefix)) inflight.delete(k);
+  }
 }
+
+// In-flight dedup map (separate from cacheStore so cacheSet doesn't lose pending refs)
+const inflight = new Map(); // key -> Promise
 
 async function cachedFetch(key, fetcher) {
   const entry = cacheStore.get(key);
@@ -79,25 +85,37 @@ async function cachedFetch(key, fetcher) {
     return { value: entry.value, fromCache: true, ageMs: now - entry.ts };
   }
 
-  // Stale-while-revalidate: if we have stale data, return it AND kick off background refresh
-  if (entry && !entry.pending) {
-    entry.pending = fetcher()
-      .then((value) => { cacheSet(key, value); })
-      .catch((e) => { console.error('background refresh failed', key, e.message); })
-      .finally(() => { const e2 = cacheStore.get(key); if (e2) e2.pending = null; });
+  // Stale-while-revalidate: have data but expired → return stale + background refresh
+  if (entry && !inflight.has(key)) {
+    const p = fetcher()
+      .then((value) => { cacheSet(key, value); return value; })
+      .catch((e) => { console.error('background refresh failed', key, e.message); throw e; })
+      .finally(() => { inflight.delete(key); });
+    inflight.set(key, p);
     return { value: entry.value, fromCache: true, stale: true, ageMs: now - entry.ts };
   }
 
-  // No entry — must wait for first fetch
-  if (entry && entry.pending) {
-    await entry.pending;
-    const e2 = cacheStore.get(key);
-    return { value: e2.value, fromCache: false, ageMs: 0 };
+  // No entry but a refresh is already in flight (another request) → wait for it
+  if (!entry && inflight.has(key)) {
+    try {
+      const value = await inflight.get(key);
+      return { value, fromCache: false, ageMs: 0 };
+    } catch (e) {
+      throw e;
+    }
   }
 
-  // Cold cache
-  const value = await fetcher();
-  cacheSet(key, value);
+  // Stale entry with in-flight refresh → return stale immediately, don't double-fetch
+  if (entry && inflight.has(key)) {
+    return { value: entry.value, fromCache: true, stale: true, ageMs: now - entry.ts };
+  }
+
+  // Cold cache, no in-flight — fetch now and dedup further callers
+  const p = fetcher()
+    .then((value) => { cacheSet(key, value); return value; })
+    .finally(() => { inflight.delete(key); });
+  inflight.set(key, p);
+  const value = await p;
   return { value, fromCache: false, ageMs: 0 };
 }
 
@@ -346,6 +364,7 @@ app.get('/api/cache/status', requireAuth, (req, res) => {
 app.post('/api/cache/clear', requireAuth, (req, res) => {
   const before = cacheStore.size;
   cacheStore.clear();
+  inflight.clear();
   res.json({ ok: true, cleared: before });
 });
 
@@ -366,7 +385,7 @@ app.get('/api/health', (req, res) => {
 
 // ----- Cache warmup -----
 async function warmupCache() {
-  const ranges = ['LAST_7_DAYS', 'LAST_30_DAYS'];
+  const ranges = ['LAST_7_DAYS', 'LAST_14_DAYS', 'LAST_30_DAYS', 'LAST_90_DAYS', 'THIS_MONTH', 'LAST_MONTH'];
   for (const range of ranges) {
     try {
       const campaignsKey = `campaigns:${range}`;
