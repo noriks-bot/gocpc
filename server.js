@@ -54,6 +54,53 @@ function requireAuth(req, res, next) {
   return res.status(401).json({ error: 'auth required' });
 }
 
+// ----- In-memory cache with stale-while-revalidate -----
+const CACHE_TTL_MS = 10 * 60 * 1000; // 10 min
+const cacheStore = new Map(); // key -> { value, ts, pending }
+
+function cacheGet(key) {
+  return cacheStore.get(key);
+}
+function cacheSet(key, value) {
+  cacheStore.set(key, { value, ts: Date.now(), pending: null });
+}
+function cacheInvalidate(prefix) {
+  for (const k of cacheStore.keys()) {
+    if (k.startsWith(prefix)) cacheStore.delete(k);
+  }
+}
+
+async function cachedFetch(key, fetcher) {
+  const entry = cacheStore.get(key);
+  const now = Date.now();
+  const fresh = entry && (now - entry.ts) < CACHE_TTL_MS;
+
+  if (entry && fresh) {
+    return { value: entry.value, fromCache: true, ageMs: now - entry.ts };
+  }
+
+  // Stale-while-revalidate: if we have stale data, return it AND kick off background refresh
+  if (entry && !entry.pending) {
+    entry.pending = fetcher()
+      .then((value) => { cacheSet(key, value); })
+      .catch((e) => { console.error('background refresh failed', key, e.message); })
+      .finally(() => { const e2 = cacheStore.get(key); if (e2) e2.pending = null; });
+    return { value: entry.value, fromCache: true, stale: true, ageMs: now - entry.ts };
+  }
+
+  // No entry — must wait for first fetch
+  if (entry && entry.pending) {
+    await entry.pending;
+    const e2 = cacheStore.get(key);
+    return { value: e2.value, fromCache: false, ageMs: 0 };
+  }
+
+  // Cold cache
+  const value = await fetcher();
+  cacheSet(key, value);
+  return { value, fromCache: false, ageMs: 0 };
+}
+
 // ----- Static -----
 // public-anon: login screen (accessible without auth)
 app.use('/anon', express.static(path.join(__dirname, 'public-anon')));
@@ -90,18 +137,32 @@ app.get('/api/me', (req, res) => {
 });
 
 // ----- API: data -----
+async function fetchCountriesSummary(range) {
+  const entries = Object.entries(accounts);
+  const results = await Promise.all(
+    entries.map(async ([country, customerId]) => {
+      try {
+        const s = await gads.accountSummary(customerId, range);
+        return { country, ...s };
+      } catch (e) {
+        return { country, customerId, error: e.message };
+      }
+    })
+  );
+  return results;
+}
+
 app.get('/api/countries-summary', requireAuth, async (req, res) => {
   const range = req.query.range || 'LAST_30_DAYS';
-  const out = [];
-  for (const [country, customerId] of Object.entries(accounts)) {
-    try {
-      const s = await gads.accountSummary(customerId, range);
-      out.push({ country, ...s });
-    } catch (e) {
-      out.push({ country, customerId, error: e.message });
-    }
+  const key = `countries-summary:${range}`;
+  try {
+    const { value, fromCache, stale, ageMs } = await cachedFetch(key, () => fetchCountriesSummary(range));
+    res.set('X-Cache', fromCache ? (stale ? 'STALE' : 'HIT') : 'MISS');
+    res.set('X-Cache-Age-Ms', String(ageMs || 0));
+    res.json({ range, countries: value, _cache: { fromCache, stale: !!stale, ageMs } });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
   }
-  res.json({ range, countries: out });
 });
 
 app.get('/api/account/:country', requireAuth, async (req, res) => {
@@ -109,32 +170,62 @@ app.get('/api/account/:country', requireAuth, async (req, res) => {
   const customerId = accounts[country];
   if (!customerId) return res.status(404).json({ error: 'unknown country' });
   const range = req.query.range || 'LAST_30_DAYS';
+  const key = `account:${country}:${range}`;
   try {
-    const [summary, campaigns] = await Promise.all([
-      gads.accountSummary(customerId, range),
-      gads.listCampaigns(customerId, range),
-    ]);
-    res.json({ country, customerId, range, summary, campaigns });
+    const { value, fromCache, stale, ageMs } = await cachedFetch(key, async () => {
+      const [summary, campaigns] = await Promise.all([
+        gads.accountSummary(customerId, range),
+        gads.listCampaigns(customerId, range),
+      ]);
+      return { summary, campaigns };
+    });
+    res.set('X-Cache', fromCache ? (stale ? 'STALE' : 'HIT') : 'MISS');
+    res.set('X-Cache-Age-Ms', String(ageMs || 0));
+    res.json({
+      country, customerId, range,
+      summary: value.summary, campaigns: value.campaigns,
+      _cache: { fromCache, stale: !!stale, ageMs },
+    });
   } catch (e) {
     res.status(500).json({ error: e.message, body: e.body });
   }
 });
 
+async function fetchAllCampaigns(range) {
+  const entries = Object.entries(accounts);
+  const perCountry = await Promise.all(
+    entries.map(async ([country, customerId]) => {
+      try {
+        const rows = await gads.listCampaigns(customerId, range);
+        return rows.map((r) => ({ country, customerId, ...r }));
+      } catch (e) {
+        return [{ country, customerId, error: e.message }];
+      }
+    })
+  );
+  const flat = perCountry.flat();
+  flat.sort((a, b) => (b.cost || 0) - (a.cost || 0));
+  return flat;
+}
+
 app.get('/api/campaigns', requireAuth, async (req, res) => {
   const range = req.query.range || 'LAST_30_DAYS';
   const onlyCountry = (req.query.country || '').toUpperCase();
-  const out = [];
-  for (const [country, customerId] of Object.entries(accounts)) {
-    if (onlyCountry && country !== onlyCountry) continue;
-    try {
-      const rows = await gads.listCampaigns(customerId, range);
-      rows.forEach((r) => out.push({ country, customerId, ...r }));
-    } catch (e) {
-      out.push({ country, customerId, error: e.message });
-    }
+  const key = `campaigns:${range}`;
+  try {
+    const { value, fromCache, stale, ageMs } = await cachedFetch(key, () => fetchAllCampaigns(range));
+    const filtered = onlyCountry ? value.filter((c) => c.country === onlyCountry) : value;
+    res.set('X-Cache', fromCache ? (stale ? 'STALE' : 'HIT') : 'MISS');
+    res.set('X-Cache-Age-Ms', String(ageMs || 0));
+    res.json({
+      range,
+      total: filtered.length,
+      campaigns: filtered,
+      _cache: { fromCache, stale: !!stale, ageMs },
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
   }
-  out.sort((a, b) => (b.cost || 0) - (a.cost || 0));
-  res.json({ range, total: out.length, campaigns: out });
 });
 
 // ----- API: campaign mutations -----
@@ -151,6 +242,9 @@ app.post('/api/campaign/:country/:campaignId/status', requireAuth, async (req, r
   }
   try {
     const result = await gads.updateCampaignStatus(customerId, req.params.campaignId, status);
+    // bust cache so the next read reflects the change
+    cacheInvalidate('campaigns:');
+    cacheInvalidate(`account:${req.params.country.toUpperCase()}:`);
     res.json({ ok: true, status, result });
   } catch (e) {
     console.error('status update error', e);
@@ -176,6 +270,8 @@ app.post('/api/campaign/:country/:campaignId/budget', requireAuth, async (req, r
       if (!resource) return res.status(404).json({ error: 'budget resource not found' });
     }
     const result = await gads.updateCampaignBudget(customerId, resource, amount);
+    cacheInvalidate('campaigns:');
+    cacheInvalidate(`account:${req.params.country.toUpperCase()}:`);
     res.json({ ok: true, dailyBudgetEur: amount, budgetResource: resource, result });
   } catch (e) {
     console.error('budget update error', e);

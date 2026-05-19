@@ -235,6 +235,7 @@ async function pageDashboard() {
         </table>
       </div>
     `;
+    wireSortable(content);
   } catch (e) {
     content.innerHTML = `<div class="error">${escHTML(e.message)}</div>`;
   }
@@ -245,10 +246,18 @@ async function pageAccounts() {
   try {
     const data = await api(`/api/countries-summary?range=${getRange()}`);
     const countries = data.countries || data.accounts || [];
+    const tot = countries.reduce((a, c) => {
+      if (c.error) return a;
+      a.cost += (c.cost || 0);
+      a.conversions += (c.conversions || 0);
+      a.conversionsValue += (c.conversionsValue || 0);
+      return a;
+    }, { cost: 0, conversions: 0, conversionsValue: 0 });
+    const totRoas = tot.cost ? tot.conversionsValue / tot.cost : 0;
     content.innerHTML = `
       <div class="notice">Klikni na državo za podrobne kampanje.</div>
       <div class="table-wrap">
-        <table>
+        <table data-sortable>
           <thead><tr>
             <th>Country</th><th>Customer ID</th>
             <th class="num">Spend</th><th class="num">Conv.</th>
@@ -268,9 +277,20 @@ async function pageAccounts() {
               </tr>`;
             }).join('')}
           </tbody>
+          <tfoot>
+            <tr>
+              <td class="label-cell">SKUPAJ</td>
+              <td></td>
+              <td class="num">${eur(tot.cost)}</td>
+              <td class="num">${fmt(tot.conversions, 1)}</td>
+              <td class="num">${eur(tot.conversionsValue)}</td>
+              <td class="num">${fmt(totRoas, 2)}x</td>
+            </tr>
+          </tfoot>
         </table>
       </div>
     `;
+    wireSortable(content);
   } catch (e) {
     content.innerHTML = `<div class="error">${escHTML(e.message)}</div>`;
   }
@@ -292,21 +312,44 @@ async function pageAccountDetail(country) {
 
       <h3 class="section">Campaigns (${data.campaigns.length})</h3>
       <div class="table-wrap">
-        <table>
+        <table data-sortable>
           <thead><tr>
             <th>Name</th><th>Status</th><th>Type</th>
             <th class="num">Budget/day</th>
             <th class="num">Spend</th><th class="num">Clicks</th>
             <th class="num">Conv.</th><th class="num">Conv. value</th>
-            <th>Actions</th>
+            <th data-nosort="1">Actions</th>
           </tr></thead>
           <tbody>
             ${data.campaigns.length ? data.campaigns.map(c => campaignRow(c, country)).join('') : '<tr><td colspan="9" style="text-align:center;padding:30px;color:var(--text-3)">No campaigns</td></tr>'}
           </tbody>
+          ${data.campaigns.length ? (() => {
+            const tc = data.campaigns.reduce((a, c) => ({
+              budget: a.budget + (c.dailyBudget || 0),
+              cost: a.cost + (c.cost || 0),
+              clicks: a.clicks + (c.clicks || 0),
+              conversions: a.conversions + (c.conversions || 0),
+              conversionsValue: a.conversionsValue + (c.conversionsValue || 0),
+            }), { budget: 0, cost: 0, clicks: 0, conversions: 0, conversionsValue: 0 });
+            return `<tfoot>
+              <tr>
+                <td class="label-cell">SKUPAJ ${data.campaigns.length}</td>
+                <td></td>
+                <td></td>
+                <td class="num">${eur(tc.budget)}</td>
+                <td class="num">${eur(tc.cost)}</td>
+                <td class="num">${fmt(tc.clicks)}</td>
+                <td class="num">${fmt(tc.conversions, 1)}</td>
+                <td class="num">${eur(tc.conversionsValue)}</td>
+                <td></td>
+              </tr>
+            </tfoot>`;
+          })() : ''}
         </table>
       </div>
     `;
     wireCampaignActions(content);
+    wireSortable(content);
   } catch (e) {
     content.innerHTML = `<div class="error">${escHTML(e.message)}</div>`;
   }
@@ -422,14 +465,14 @@ async function pageCampaigns() {
         <button class="filter-btn" data-filter="REMOVED">REMOVED (${campaigns.filter(c=>c.status==='REMOVED').length})</button>
       </div>
       <div class="table-wrap">
-        <table id="campaignsTable">
+        <table id="campaignsTable" data-sortable>
           <thead><tr>
             <th>Country</th><th>Campaign</th><th>Status</th><th>Type</th>
             <th class="num">Daily €</th>
             <th class="num">Impr.</th><th class="num">Kliki</th>
             <th class="num">Spend</th><th class="num">Konv.</th>
             <th class="num">CPA</th><th class="num">ROAS</th>
-            <th>Actions</th>
+            <th data-nosort="1">Actions</th>
           </tr></thead>
           <tbody>
             ${campaigns.length ? campaigns.map(c => {
@@ -487,6 +530,7 @@ async function pageCampaigns() {
       });
     });
     wireCampaignActions(content);
+    wireSortable(content);
   } catch (e) {
     content.innerHTML = `<div class="error">${escHTML(e.message)}</div>`;
   }
