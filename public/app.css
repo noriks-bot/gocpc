@@ -135,4 +135,16 @@ button.primary:disabled{opacity:.5;cursor:wait}
 .filter-btn:hover{border-color:var(--accent);color:var(--text)}
 .filter-btn.active{background:var(--accent);color:#000;border-color:var(--accent)}
 
+td.actions{white-space:nowrap;text-align:right}
+.btn-toggle,.btn-budget{
+  background:var(--bg-3);border:1px solid var(--border-2);color:var(--text);
+  padding:5px 10px;border-radius:5px;font-size:11px;font-weight:600;
+  cursor:pointer;font-family:inherit;letter-spacing:.4px;
+  transition:all .12s;margin-left:4px
+}
+.btn-toggle:hover{border-color:var(--accent);color:var(--accent)}
+.btn-budget:hover{border-color:var(--accent);color:var(--accent)}
+.btn-toggle:disabled,.btn-budget:disabled{opacity:.4;cursor:wait}
+.budget-display{font-weight:600;color:var(--text)}
+
 .json-debug{background:var(--bg-2);border:1px solid var(--border);border-radius:6px;padding:12px;font-family:ui-monospace,Menlo,monospace;font-size:11px;color:var(--text-3);overflow:auto;max-height:300px;white-space:pre-wrap;margin-top:12px}

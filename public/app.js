@@ -59,6 +59,67 @@ function escHTML(s) {
   return String(s ?? '').replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 
+// ---------- Sortable tables ----------
+function wireSortable(root = document) {
+  root.querySelectorAll('table[data-sortable]').forEach((table) => {
+    const ths = [...(table.tHead?.rows[0]?.cells || [])];
+    ths.forEach((th, idx) => {
+      if (th.dataset.nosort === '1') return;
+      th.classList.add('sortable');
+      th.addEventListener('click', () => sortTable(table, idx, th));
+    });
+  });
+}
+
+function parseSortValue(td) {
+  if (!td) return null;
+  const ds = td.dataset.sort;
+  if (ds != null && ds !== '') {
+    const n = Number(ds);
+    return isNaN(n) ? ds.toLowerCase() : n;
+  }
+  const txt = (td.textContent || '').trim();
+  if (!txt || txt === '–') return null;
+  const numMatch = txt.replace(/\s|€|x|%/g, '').replace(/\.(?=\d{3}(\D|$))/g, '').replace(',', '.');
+  const n = parseFloat(numMatch);
+  if (!isNaN(n) && /\d/.test(txt)) return n;
+  return txt.toLowerCase();
+}
+
+function sortTable(table, colIdx, th) {
+  const tbody = table.tBodies[0];
+  if (!tbody) return;
+  const rows = [...tbody.rows].filter((r) => !r.dataset.skipSort);
+  const otherRows = [...tbody.rows].filter((r) => r.dataset.skipSort);
+
+  const currentDir = th.classList.contains('sort-asc') ? 'asc'
+    : th.classList.contains('sort-desc') ? 'desc' : null;
+  let newDir;
+  if (currentDir === null) {
+    const sample = rows[0]?.cells[colIdx];
+    newDir = typeof parseSortValue(sample) === 'number' ? 'desc' : 'asc';
+  } else {
+    newDir = currentDir === 'asc' ? 'desc' : 'asc';
+  }
+
+  [...th.parentNode.cells].forEach((t) => t.classList.remove('sort-asc', 'sort-desc'));
+  th.classList.add(newDir === 'asc' ? 'sort-asc' : 'sort-desc');
+
+  const dirMul = newDir === 'asc' ? 1 : -1;
+  rows.sort((a, b) => {
+    const va = parseSortValue(a.cells[colIdx]);
+    const vb = parseSortValue(b.cells[colIdx]);
+    if (va == null && vb == null) return 0;
+    if (va == null) return 1;
+    if (vb == null) return -1;
+    if (typeof va === 'number' && typeof vb === 'number') return (va - vb) * dirMul;
+    return String(va).localeCompare(String(vb), 'sl-SI', { numeric: true }) * dirMul;
+  });
+
+  rows.forEach((r) => tbody.appendChild(r));
+  otherRows.forEach((r) => tbody.appendChild(r));
+}
+
 async function api(path, opts = {}) {
   const r = await fetch(path, opts);
   if (r.status === 401) {
@@ -135,7 +196,7 @@ async function pageDashboard() {
 
       <h3 class="section">Po državah</h3>
       <div class="table-wrap">
-        <table>
+        <table data-sortable>
           <thead><tr>
             <th>Država</th>
             <th class="num">Impr.</th><th class="num">Kliki</th>
@@ -234,30 +295,103 @@ async function pageAccountDetail(country) {
         <table>
           <thead><tr>
             <th>Name</th><th>Status</th><th>Type</th>
+            <th class="num">Budget/day</th>
             <th class="num">Spend</th><th class="num">Clicks</th>
-            <th class="num">Impr.</th><th class="num">Conv.</th>
-            <th class="num">Conv. value</th>
+            <th class="num">Conv.</th><th class="num">Conv. value</th>
+            <th>Actions</th>
           </tr></thead>
           <tbody>
-            ${data.campaigns.length ? data.campaigns.map(c => `
-              <tr>
-                <td>${escHTML(c.name || '–')}</td>
-                <td><span class="status-pill ${(c.status || '').toLowerCase()}">${escHTML(c.status || '–')}</span></td>
-                <td style="font-size:11px;color:var(--text-3)">${escHTML(c.type || '–')}</td>
-                <td class="num">${eur(c.cost)}</td>
-                <td class="num">${fmt(c.clicks)}</td>
-                <td class="num">${fmt(c.impressions)}</td>
-                <td class="num">${fmt(c.conversions, 1)}</td>
-                <td class="num">${eur(c.conversionsValue)}</td>
-              </tr>
-            `).join('') : '<tr><td colspan="8" style="text-align:center;padding:30px;color:var(--text-3)">No campaigns</td></tr>'}
+            ${data.campaigns.length ? data.campaigns.map(c => campaignRow(c, country)).join('') : '<tr><td colspan="9" style="text-align:center;padding:30px;color:var(--text-3)">No campaigns</td></tr>'}
           </tbody>
         </table>
       </div>
     `;
+    wireCampaignActions(content);
   } catch (e) {
     content.innerHTML = `<div class="error">${escHTML(e.message)}</div>`;
   }
+}
+
+function campaignRow(c, country) {
+  const isEnabled = c.status === 'ENABLED';
+  const isRemoved = c.status === 'REMOVED';
+  const toggleLabel = isEnabled ? 'Pause' : 'Resume';
+  const toggleNext = isEnabled ? 'PAUSED' : 'ENABLED';
+  const budgetCell = c.dailyBudget != null && c.dailyBudget > 0
+    ? `<span class="budget-display" data-budget="${c.dailyBudget}">${eur(c.dailyBudget)}</span>`
+    : '<span style="color:var(--text-3);font-size:11px">–</span>';
+  return `<tr data-country="${country}" data-campaign-id="${c.id}" data-budget-resource="${escHTML(c.budgetResource || '')}">
+    <td>${escHTML(c.name || '–')}</td>
+    <td><span class="status-pill ${(c.status || '').toLowerCase()}">${escHTML(c.status || '–')}</span></td>
+    <td style="font-size:11px;color:var(--text-3)">${escHTML(c.type || '–')}</td>
+    <td class="num">${budgetCell}</td>
+    <td class="num">${eur(c.cost)}</td>
+    <td class="num">${fmt(c.clicks)}</td>
+    <td class="num">${fmt(c.conversions, 1)}</td>
+    <td class="num">${eur(c.conversionsValue)}</td>
+    <td class="actions">
+      ${isRemoved ? '<span style="color:var(--text-3);font-size:11px">removed</span>' : `
+        <button class="btn-toggle" data-next="${toggleNext}">${toggleLabel}</button>
+        <button class="btn-budget">€</button>
+      `}
+    </td>
+  </tr>`;
+}
+
+function wireCampaignActions(scope) {
+  scope.querySelectorAll('.btn-toggle').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      const tr = e.target.closest('tr');
+      const country = tr.dataset.country;
+      const id = tr.dataset.campaignId;
+      const next = e.target.dataset.next;
+      if (!confirm(`${next === 'ENABLED' ? 'Vključi' : 'Zaustavi'} kampanjo?`)) return;
+      e.target.disabled = true;
+      e.target.textContent = '…';
+      try {
+        const r = await fetch(`/api/campaign/${country}/${id}/status`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: next }),
+        });
+        const j = await r.json();
+        if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
+        router();
+      } catch (err) {
+        alert('Napaka: ' + err.message);
+        e.target.disabled = false;
+      }
+    });
+  });
+  scope.querySelectorAll('.btn-budget').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      const tr = e.target.closest('tr');
+      const country = tr.dataset.country;
+      const id = tr.dataset.campaignId;
+      const budgetResource = tr.dataset.budgetResource;
+      const current = tr.querySelector('.budget-display')?.dataset.budget || '';
+      const v = prompt(`Nov dnevni budget v EUR (trenutno ${current || '–'}):`, current);
+      if (v == null) return;
+      const amount = parseFloat(v);
+      if (!amount || amount <= 0) { alert('Neveljaven znesek.'); return; }
+      e.target.disabled = true;
+      e.target.textContent = '…';
+      try {
+        const r = await fetch(`/api/campaign/${country}/${id}/budget`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ dailyBudgetEur: amount, budgetResource }),
+        });
+        const j = await r.json();
+        if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
+        router();
+      } catch (err) {
+        alert('Napaka: ' + err.message);
+        e.target.disabled = false;
+        e.target.textContent = '€';
+      }
+    });
+  });
 }
 
 async function pageCampaigns() {
@@ -291,38 +425,50 @@ async function pageCampaigns() {
         <table id="campaignsTable">
           <thead><tr>
             <th>Country</th><th>Campaign</th><th>Status</th><th>Type</th>
+            <th class="num">Daily €</th>
             <th class="num">Impr.</th><th class="num">Kliki</th>
             <th class="num">Spend</th><th class="num">Konv.</th>
             <th class="num">CPA</th><th class="num">ROAS</th>
+            <th>Actions</th>
           </tr></thead>
           <tbody>
             ${campaigns.length ? campaigns.map(c => {
-              if (c.error) return `<tr data-status="ERROR"><td><span class="flag">${c.country}</span></td><td colspan="9" style="color:#ff8a8a;font-size:12px">${escHTML(c.error)}</td></tr>`;
+              if (c.error) return `<tr data-status="ERROR"><td><span class="flag">${c.country}</span></td><td colspan="11" style="color:#ff8a8a;font-size:12px">${escHTML(c.error)}</td></tr>`;
               const r = c.cost ? (c.conversionsValue / c.cost) : 0;
               const cp = c.conversions ? (c.cost / c.conversions) : 0;
-              return `<tr data-status="${escHTML(c.status || '')}">
+              const isEnabled = c.status === 'ENABLED';
+              const isRemoved = c.status === 'REMOVED';
+              const toggleLabel = isEnabled ? 'Pause' : 'Resume';
+              const toggleNext = isEnabled ? 'PAUSED' : 'ENABLED';
+              const budgetCell = c.dailyBudget != null && c.dailyBudget > 0
+                ? `<span class="budget-display" data-budget="${c.dailyBudget}">${eur(c.dailyBudget)}</span>`
+                : '<span style="color:var(--text-3);font-size:11px">–</span>';
+              return `<tr data-status="${escHTML(c.status || '')}" data-country="${c.country}" data-campaign-id="${c.id}" data-budget-resource="${escHTML(c.budgetResource || '')}">
                 <td><span class="flag">${c.country}</span></td>
                 <td style="font-weight:500;color:var(--text)">${escHTML(c.name || '–')}</td>
                 <td><span class="status-pill ${(c.status || '').toLowerCase()}">${escHTML(c.status || '–')}</span></td>
                 <td style="font-size:11px;color:var(--text-3)">${escHTML(c.type || '–')}</td>
+                <td class="num">${budgetCell}</td>
                 <td class="num">${fmt(c.impressions)}</td>
                 <td class="num">${fmt(c.clicks)}</td>
                 <td class="num">${eur(c.cost)}</td>
                 <td class="num">${fmt(c.conversions, 0)}</td>
                 <td class="num">${eur(cp)}</td>
                 <td class="num" style="color:${r>=3?'var(--green)':(r>=1?'var(--text)':(c.cost>0?'var(--red)':'var(--text-3)'))}">${fmt(r, 2)}x</td>
+                <td class="actions">${isRemoved ? '<span style="color:var(--text-3);font-size:11px">removed</span>' : `<button class="btn-toggle" data-next="${toggleNext}">${toggleLabel}</button> <button class="btn-budget">€</button>`}</td>
               </tr>`;
-            }).join('') : '<tr><td colspan="10" style="text-align:center;padding:30px;color:var(--text-3)">No campaigns</td></tr>'}
+            }).join('') : '<tr><td colspan="12" style="text-align:center;padding:30px;color:var(--text-3)">No campaigns</td></tr>'}
           </tbody>
           <tfoot>
             <tr>
-              <td colspan="4" class="label-cell">SKUPAJ ${total}</td>
+              <td colspan="5" class="label-cell">SKUPAJ ${total}</td>
               <td class="num">${fmt(tot.impressions)}</td>
               <td class="num">${fmt(tot.clicks)}</td>
               <td class="num">${eur(tot.cost)}</td>
               <td class="num">${fmt(tot.conversions, 0)}</td>
               <td class="num">${eur(totCpa)}</td>
               <td class="num">${fmt(totRoas, 2)}x</td>
+              <td></td>
             </tr>
           </tfoot>
         </table>
@@ -340,6 +486,7 @@ async function pageCampaigns() {
         });
       });
     });
+    wireCampaignActions(content);
   } catch (e) {
     content.innerHTML = `<div class="error">${escHTML(e.message)}</div>`;
   }
