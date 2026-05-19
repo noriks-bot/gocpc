@@ -47,9 +47,13 @@
     }
     h1 span { color: #F5D900; }
     p.sub { color: #71717a; font-size: 13px; margin: 6px 0 0; }
-    form { margin-top: 22px; display: flex; flex-direction: column; gap: 12px; }
-    label { font-size: 12px; color: #a1a1aa; }
+    form { margin-top: 22px; display: flex; flex-direction: column; gap: 14px; }
+    .field { display: flex; flex-direction: column; gap: 6px; width: 100%; }
+    label { font-size: 12px; color: #a1a1aa; display: block; }
     input {
+      display: block;
+      width: 100%;
+      box-sizing: border-box;
       background: #0e0e10;
       border: 1px solid #27272a;
       border-radius: 8px;
@@ -58,6 +62,7 @@
       color: #fff;
       outline: none;
       transition: border-color .15s;
+      font-family: inherit;
     }
     input:focus { border-color: #F5D900; }
     button {
@@ -100,11 +105,11 @@
       <p class="sub">Google Ads dashboard + uploader</p>
     </div>
     <form id="loginForm">
-      <div>
+      <div class="field">
         <label for="u">Uporabnik</label>
         <input id="u" name="username" type="text" autocomplete="username" autofocus required />
       </div>
-      <div>
+      <div class="field">
         <label for="p">Geslo</label>
         <input id="p" name="password" type="password" autocomplete="current-password" required />
       </div>
