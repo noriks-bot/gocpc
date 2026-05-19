@@ -164,20 +164,28 @@ function cacheSave(path, data) {
  *  - then fetch fresh, save to localStorage, and call render(data, { stale: false, ageMs })
  *  - returns the final fresh data (or throws)
  */
+// Per-render token — invalidates older in-flight fetches when the user navigates / changes range
+let RENDER_TOKEN = 0;
+function nextToken() { return ++RENDER_TOKEN; }
+
 async function apiSWR(path, render) {
+  const myToken = nextToken();
+  const safeRender = (data, meta) => {
+    if (myToken !== RENDER_TOKEN) return; // a newer request superseded us — drop result
+    try { render(data, meta); } catch (e) { console.error(e); }
+  };
   const cached = cacheLoad(path);
   if (cached) {
     const age = Date.now() - cached.ts;
-    try { render(cached.data, { stale: true, ageMs: age, fromCache: true }); } catch (e) { console.error(e); }
+    safeRender(cached.data, { stale: true, ageMs: age, fromCache: true });
   }
   try {
     const fresh = await api(path);
     cacheSave(path, fresh);
-    try { render(fresh, { stale: false, ageMs: 0, fromCache: false }); } catch (e) { console.error(e); }
+    safeRender(fresh, { stale: false, ageMs: 0, fromCache: false });
     return fresh;
   } catch (e) {
     if (!cached) throw e;
-    // we already rendered stale, just log
     console.warn('refresh failed, kept stale:', e.message);
     return cached.data;
   }
