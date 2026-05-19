@@ -131,8 +131,72 @@ async function api(path, opts = {}) {
   return j;
 }
 
+// Client-side cache layer (localStorage) — instant render + background refresh
+const CLIENT_CACHE_TTL_MS = 10 * 60 * 1000;
+const CACHE_KEY_PREFIX = 'gocpc:v1:';
+
+function cacheLoad(path) {
+  try {
+    const raw = localStorage.getItem(CACHE_KEY_PREFIX + path);
+    if (!raw) return null;
+    const o = JSON.parse(raw);
+    if (!o || !o.ts) return null;
+    return o; // { ts, data }
+  } catch { return null; }
+}
+function cacheSave(path, data) {
+  try {
+    localStorage.setItem(CACHE_KEY_PREFIX + path, JSON.stringify({ ts: Date.now(), data }));
+  } catch (e) {
+    // quota or disabled — ignore
+  }
+}
+
+/**
+ * apiSWR(path, render)
+ *  - if localStorage has data: call render(data, { stale: true, ageMs }) IMMEDIATELY
+ *  - then fetch fresh, save to localStorage, and call render(data, { stale: false, ageMs })
+ *  - returns the final fresh data (or throws)
+ */
+async function apiSWR(path, render) {
+  const cached = cacheLoad(path);
+  if (cached) {
+    const age = Date.now() - cached.ts;
+    try { render(cached.data, { stale: true, ageMs: age, fromCache: true }); } catch (e) { console.error(e); }
+  }
+  try {
+    const fresh = await api(path);
+    cacheSave(path, fresh);
+    try { render(fresh, { stale: false, ageMs: 0, fromCache: false }); } catch (e) { console.error(e); }
+    return fresh;
+  } catch (e) {
+    if (!cached) throw e;
+    // we already rendered stale, just log
+    console.warn('refresh failed, kept stale:', e.message);
+    return cached.data;
+  }
+}
+
+function fmtAge(ms) {
+  if (ms < 1000) return 'just now';
+  const s = Math.round(ms / 1000);
+  if (s < 60) return `${s}s`;
+  const m = Math.round(s / 60);
+  if (m < 60) return `${m}m`;
+  return `${Math.round(m / 60)}h`;
+}
+
+function cacheBadge(meta) {
+  if (!meta) return '';
+  if (meta.stale) return `<span class="cache-badge stale" title="iz cache, osvežujem v ozadju">⏳ cache ${fmtAge(meta.ageMs)}</span>`;
+  return `<span class="cache-badge fresh">✓ live</span>`;
+}
+
+let CURRENT_RANGE = 'LAST_30_DAYS';
 function getRange() {
-  return ($('#rangeSel')?.value) || 'LAST_30_DAYS';
+  const v = $('#rangeSel')?.value;
+  if (v) CURRENT_RANGE = v;
+  return CURRENT_RANGE;
 }
 
 function pageShell(title, withRange = true) {
@@ -159,16 +223,37 @@ function pageShell(title, withRange = true) {
     </div>
   `;
   if (withRange) {
-    $('#rangeSel').addEventListener('change', () => router());
-    $('#refreshBtn').addEventListener('click', () => router());
+    // restore selected range after re-render
+    const sel = $('#rangeSel');
+    if (sel) sel.value = CURRENT_RANGE;
+    sel.addEventListener('change', (e) => {
+      CURRENT_RANGE = e.target.value;
+      router();
+    });
+    $('#refreshBtn').addEventListener('click', async () => {
+      // force refresh: clear client + server caches for this range
+      try {
+        Object.keys(localStorage).forEach(k => { if (k.startsWith(CACHE_KEY_PREFIX)) localStorage.removeItem(k); });
+        await fetch('/api/cache/clear', { method: 'POST' });
+      } catch (e) { /* ignore */ }
+      router();
+    });
   }
   return $('#pageContent');
 }
 
 async function pageDashboard() {
   const content = pageShell('Dashboard');
+  const path = `/api/countries-summary?range=${getRange()}`;
   try {
-    const data = await api(`/api/countries-summary?range=${getRange()}`);
+    await apiSWR(path, (data, meta) => renderDashboard(content, data, meta));
+  } catch (e) {
+    content.innerHTML = `<div class="error">${escHTML(e.message)}</div>`;
+  }
+}
+
+function renderDashboard(content, data, meta) {
+  try {
     const countries = data.countries || data.accounts || [];
     const tot = countries.reduce((a, c) => {
       if (c.error) return a;
@@ -243,8 +328,16 @@ async function pageDashboard() {
 
 async function pageAccounts() {
   const content = pageShell('Računi / države');
+  const path = `/api/countries-summary?range=${getRange()}`;
   try {
-    const data = await api(`/api/countries-summary?range=${getRange()}`);
+    await apiSWR(path, (data, meta) => renderAccounts(content, data, meta));
+  } catch (e) {
+    content.innerHTML = `<div class="error">${escHTML(e.message)}</div>`;
+  }
+}
+
+function renderAccounts(content, data, meta) {
+  try {
     const countries = data.countries || data.accounts || [];
     const tot = countries.reduce((a, c) => {
       if (c.error) return a;
@@ -255,7 +348,7 @@ async function pageAccounts() {
     }, { cost: 0, conversions: 0, conversionsValue: 0 });
     const totRoas = tot.cost ? tot.conversionsValue / tot.cost : 0;
     content.innerHTML = `
-      <div class="notice">Klikni na državo za podrobne kampanje.</div>
+      <div class="notice">Klikni na državo za podrobne kampanje. ${cacheBadge(meta)}</div>
       <div class="table-wrap">
         <table data-sortable>
           <thead><tr>
@@ -269,7 +362,7 @@ async function pageAccounts() {
               const r = c.cost ? (c.conversionsValue / c.cost) : 0;
               return `<tr style="cursor:pointer" onclick="location.hash='#/account/${c.country}'">
                 <td><span class="flag">${c.country}</span> ${escHTML(COUNTRY_NAMES[c.country] || '')}</td>
-                <td style="color:var(--text-3);font-size:12px">${c.customerId}</td>
+                <td style="color:var(--text-3);font-size:12px">${escHTML(c.customerId || '–')}</td>
                 <td class="num">${eur(c.cost)}</td>
                 <td class="num">${fmt(c.conversions, 1)}</td>
                 <td class="num">${eur(c.conversionsValue)}</td>
@@ -298,8 +391,16 @@ async function pageAccounts() {
 
 async function pageAccountDetail(country) {
   const content = pageShell(`${country} — ${COUNTRY_NAMES[country] || ''}`);
+  const path = `/api/account/${country}?range=${getRange()}`;
   try {
-    const data = await api(`/api/account/${country}?range=${getRange()}`);
+    await apiSWR(path, (data, meta) => renderAccountDetail(content, data, meta, country));
+  } catch (e) {
+    content.innerHTML = `<div class="error">${escHTML(e.message)}</div>`;
+  }
+}
+
+function renderAccountDetail(content, data, meta, country) {
+  try {
     const s = data.summary || {};
     const r = s.cost ? (s.conversionsValue / s.cost) : 0;
     content.innerHTML = `
@@ -318,10 +419,11 @@ async function pageAccountDetail(country) {
             <th class="num">Budget/day</th>
             <th class="num">Spend</th><th class="num">Clicks</th>
             <th class="num">Conv.</th><th class="num">Conv. value</th>
+            <th class="num">ROAS</th>
             <th data-nosort="1">Actions</th>
           </tr></thead>
           <tbody>
-            ${data.campaigns.length ? data.campaigns.map(c => campaignRow(c, country)).join('') : '<tr><td colspan="9" style="text-align:center;padding:30px;color:var(--text-3)">No campaigns</td></tr>'}
+            ${data.campaigns.length ? data.campaigns.map(c => campaignRow(c, country)).join('') : '<tr><td colspan="10" style="text-align:center;padding:30px;color:var(--text-3)">No campaigns</td></tr>'}
           </tbody>
           ${data.campaigns.length ? (() => {
             const tc = data.campaigns.reduce((a, c) => ({
@@ -331,6 +433,7 @@ async function pageAccountDetail(country) {
               conversions: a.conversions + (c.conversions || 0),
               conversionsValue: a.conversionsValue + (c.conversionsValue || 0),
             }), { budget: 0, cost: 0, clicks: 0, conversions: 0, conversionsValue: 0 });
+            const totRoas = tc.cost ? tc.conversionsValue / tc.cost : 0;
             return `<tfoot>
               <tr>
                 <td class="label-cell">SKUPAJ ${data.campaigns.length}</td>
@@ -341,6 +444,7 @@ async function pageAccountDetail(country) {
                 <td class="num">${fmt(tc.clicks)}</td>
                 <td class="num">${fmt(tc.conversions, 1)}</td>
                 <td class="num">${eur(tc.conversionsValue)}</td>
+                <td class="num">${fmt(totRoas, 2)}x</td>
                 <td></td>
               </tr>
             </tfoot>`;
@@ -439,8 +543,18 @@ function wireCampaignActions(scope) {
 
 async function pageCampaigns() {
   const content = pageShell('Kampanje (vse države)');
+  const range = getRange();
+  const path = `/api/campaigns?range=${range}`;
+  const render = (data, meta) => renderCampaignsPage(content, data, meta);
   try {
-    const data = await api(`/api/campaigns?range=${getRange()}`);
+    await apiSWR(path, render);
+  } catch (e) {
+    content.innerHTML = `<div class="error">${escHTML(e.message)}</div>`;
+  }
+}
+
+function renderCampaignsPage(content, data, meta) {
+  try {
     const campaigns = data.campaigns || [];
     const total = data.total != null ? data.total : campaigns.length;
     const countries = [...new Set(campaigns.map(c => c.country))];
@@ -457,6 +571,7 @@ async function pageCampaigns() {
     content.innerHTML = `
       <div class="notice">
         Skupaj <strong>${total}</strong> kampanj v ${countries.length} državah (${countries.join(', ')}), sortirano po porabi.
+        ${cacheBadge(meta)}
       </div>
       <div class="filter-bar" style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">
         <button class="filter-btn active" data-filter="all">VSE (${campaigns.length})</button>

@@ -143,7 +143,7 @@ async function fetchCountriesSummary(range) {
     entries.map(async ([country, customerId]) => {
       try {
         const s = await gads.accountSummary(customerId, range);
-        return { country, ...s };
+        return { country, customerId, ...s };
       } catch (e) {
         return { country, customerId, error: e.message };
       }
@@ -329,6 +329,26 @@ app.post(
   }
 );
 
+// ----- Cache admin -----
+app.get('/api/cache/status', requireAuth, (req, res) => {
+  const now = Date.now();
+  const entries = [...cacheStore.entries()].map(([k, v]) => ({
+    key: k,
+    ageMs: now - v.ts,
+    ageSec: Math.round((now - v.ts) / 1000),
+    fresh: (now - v.ts) < CACHE_TTL_MS,
+    pending: !!v.pending,
+    size: Array.isArray(v.value) ? v.value.length : (v.value && typeof v.value === 'object' ? Object.keys(v.value).length : 1),
+  }));
+  res.json({ ttlMs: CACHE_TTL_MS, entries });
+});
+
+app.post('/api/cache/clear', requireAuth, (req, res) => {
+  const before = cacheStore.size;
+  cacheStore.clear();
+  res.json({ ok: true, cleared: before });
+});
+
 // ----- Health -----
 app.get('/api/health', (req, res) => {
   res.json({
@@ -340,10 +360,31 @@ app.get('/api/health', (req, res) => {
         process.env.GOOGLE_ADS_REFRESH_TOKEN &&
         process.env.GOOGLE_ADS_CLIENT_ID
     ),
+    cache: { entries: cacheStore.size, ttlMs: CACHE_TTL_MS },
   });
 });
+
+// ----- Cache warmup -----
+async function warmupCache() {
+  const ranges = ['LAST_7_DAYS', 'LAST_30_DAYS'];
+  for (const range of ranges) {
+    try {
+      const campaignsKey = `campaigns:${range}`;
+      const countriesKey = `countries-summary:${range}`;
+      await Promise.all([
+        cachedFetch(campaignsKey, () => fetchAllCampaigns(range)),
+        cachedFetch(countriesKey, () => fetchCountriesSummary(range)),
+      ]);
+      console.log(`[warmup] cached ${range}`);
+    } catch (e) {
+      console.error(`[warmup] ${range} failed:`, e.message);
+    }
+  }
+}
 
 app.listen(PORT, () => {
   console.log(`gocpc listening on ${PORT}`);
   console.log('accounts:', Object.keys(accounts).join(', '));
+  // warm cache on boot so first user request is instant
+  warmupCache().catch((e) => console.error('warmup error', e));
 });
