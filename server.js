@@ -1,28 +1,21 @@
+// server.js — gocpc.noriks.com (Google Ads management UI)
 require('dotenv').config();
+
 const express = require('express');
 const session = require('express-session');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+
 const { GoogleAdsClient, parseAccounts } = require('./lib/google-ads');
 
-const app = express();
 const PORT = process.env.PORT || 3011;
-
 const ADMIN_USER = process.env.ADMIN_USER || 'admin';
 const ADMIN_PASS = process.env.ADMIN_PASS || 'mistermegazmaga2026';
 
-// ── Storage for uploaded creative assets ──
-const UPLOAD_DIR = path.join(__dirname, 'uploads');
-if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
-const upload = multer({
-  dest: UPLOAD_DIR,
-  limits: { fileSize: 500 * 1024 * 1024 },
-});
-
-// ── Google Ads client ──
 const accounts = parseAccounts(process.env.GOOGLE_ADS_ACCOUNTS);
-const ga = new GoogleAdsClient({
+
+const gads = new GoogleAdsClient({
   clientId: process.env.GOOGLE_ADS_CLIENT_ID,
   clientSecret: process.env.GOOGLE_ADS_CLIENT_SECRET,
   refreshToken: process.env.GOOGLE_ADS_REFRESH_TOKEN,
@@ -31,47 +24,56 @@ const ga = new GoogleAdsClient({
   accounts,
 });
 
-// ── Middleware ──
+const app = express();
+
 app.use(express.json({ limit: '2mb' }));
 app.use(express.urlencoded({ extended: true }));
+
 app.use(
   session({
-    secret: process.env.SESSION_SECRET || 'gocpc-dev-secret',
+    secret: process.env.SESSION_SECRET || 'change-me',
     resave: false,
     saveUninitialized: false,
     cookie: {
       httpOnly: true,
       sameSite: 'lax',
+      secure: false,
       maxAge: 7 * 24 * 60 * 60 * 1000,
     },
   })
 );
 
+// uploads dir
+const uploadsDir = path.join(__dirname, 'uploads');
+if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
+const upload = multer({ dest: uploadsDir });
+
+// auth middleware
 function requireAuth(req, res, next) {
-  if (req.session && req.session.user === ADMIN_USER) return next();
-  if (req.path.startsWith('/api/')) {
-    return res.status(401).json({ error: 'unauthorized' });
-  }
-  return res.redirect('/login.html');
+  if (req.session && req.session.user) return next();
+  return res.status(401).json({ error: 'auth required' });
 }
 
-// ── Public endpoints ──
-app.get('/health', (req, res) => {
-  res.json({
-    ok: true,
-    app: 'gocpc',
-    version: '0.2.0',
-    uptime: process.uptime(),
-    accounts: Object.keys(accounts),
-    timestamp: new Date().toISOString(),
-  });
-});
+// ----- Static -----
+// public-anon: login screen (accessible without auth)
+app.use('/anon', express.static(path.join(__dirname, 'public-anon')));
+app.get('/login', (req, res) => res.sendFile(path.join(__dirname, 'public-anon', 'login.html')));
 
+// gated static
+app.use((req, res, next) => {
+  if (req.path.startsWith('/api/')) return next();
+  if (req.path === '/login' || req.path.startsWith('/anon/')) return next();
+  if (req.session && req.session.user) return next();
+  return res.redirect('/login');
+});
+app.use(express.static(path.join(__dirname, 'public')));
+
+// ----- API: auth -----
 app.post('/api/login', (req, res) => {
-  const { user, pass } = req.body || {};
-  if (user === ADMIN_USER && pass === ADMIN_PASS) {
-    req.session.user = user;
-    return res.json({ ok: true });
+  const { username, password } = req.body || {};
+  if (username === ADMIN_USER && password === ADMIN_PASS) {
+    req.session.user = { username };
+    return res.json({ ok: true, user: { username } });
   }
   return res.status(401).json({ error: 'invalid credentials' });
 });
@@ -80,66 +82,65 @@ app.post('/api/logout', (req, res) => {
   req.session.destroy(() => res.json({ ok: true }));
 });
 
-app.use(express.static(path.join(__dirname, 'public-anon')));
-
-// ── Protected ──
-app.use(requireAuth);
-
 app.get('/api/me', (req, res) => {
-  res.json({ user: req.session.user, accounts });
+  if (req.session && req.session.user) {
+    return res.json({ user: req.session.user, accounts: Object.keys(accounts) });
+  }
+  return res.status(401).json({ error: 'not logged in' });
 });
 
-app.get('/api/countries-summary', async (req, res) => {
-  const dateRange = (req.query.range || 'LAST_30_DAYS').toUpperCase();
+// ----- API: data -----
+app.get('/api/countries-summary', requireAuth, async (req, res) => {
+  const range = req.query.range || 'LAST_30_DAYS';
   const out = [];
-  for (const [country, custId] of Object.entries(accounts)) {
+  for (const [country, customerId] of Object.entries(accounts)) {
     try {
-      const s = await ga.accountSummary(custId, dateRange);
-      out.push({ country, customerId: custId, ...s });
+      const s = await gads.accountSummary(customerId, range);
+      out.push({ country, ...s });
     } catch (e) {
-      out.push({ country, customerId: custId, error: e.message });
+      out.push({ country, customerId, error: e.message });
     }
   }
-  res.json({ range: dateRange, countries: out });
+  res.json({ range, accounts: out });
 });
 
-app.get('/api/account/:country', async (req, res) => {
+app.get('/api/account/:country', requireAuth, async (req, res) => {
   const country = (req.params.country || '').toUpperCase();
-  const custId = accounts[country];
-  if (!custId) return res.status(404).json({ error: 'unknown country', country });
-  const dateRange = (req.query.range || 'LAST_30_DAYS').toUpperCase();
+  const customerId = accounts[country];
+  if (!customerId) return res.status(404).json({ error: 'unknown country' });
+  const range = req.query.range || 'LAST_30_DAYS';
   try {
     const [summary, campaigns] = await Promise.all([
-      ga.accountSummary(custId, dateRange),
-      ga.listCampaigns(custId, dateRange),
+      gads.accountSummary(customerId, range),
+      gads.listCampaigns(customerId, range),
     ]);
-    res.json({ country, customerId: custId, range: dateRange, summary, campaigns });
+    res.json({ country, customerId, range, summary, campaigns });
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    res.status(500).json({ error: e.message, body: e.body });
   }
 });
 
-app.get('/api/campaigns', async (req, res) => {
-  const dateRange = (req.query.range || 'LAST_30_DAYS').toUpperCase();
-  const all = [];
-  for (const [country, custId] of Object.entries(accounts)) {
+app.get('/api/campaigns', requireAuth, async (req, res) => {
+  const range = req.query.range || 'LAST_30_DAYS';
+  const onlyCountry = (req.query.country || '').toUpperCase();
+  const out = [];
+  for (const [country, customerId] of Object.entries(accounts)) {
+    if (onlyCountry && country !== onlyCountry) continue;
     try {
-      const list = await ga.listCampaigns(custId, dateRange);
-      list.forEach((c) => all.push({ country, customerId: custId, ...c }));
+      const rows = await gads.listCampaigns(customerId, range);
+      rows.forEach((r) => out.push({ country, customerId, ...r }));
     } catch (e) {
-      console.error(`[campaigns] ${country} ${custId}: ${e.message}`);
+      out.push({ country, customerId, error: e.message });
     }
   }
-  all.sort((a, b) => (b.cost || 0) - (a.cost || 0));
-  res.json({ range: dateRange, total: all.length, campaigns: all });
+  res.json({ range, campaigns: out });
 });
 
+// ----- API: upload new campaign -----
 app.post(
   '/api/upload-campaign',
-  upload.fields([
-    { name: 'videos', maxCount: 5 },
-    { name: 'images', maxCount: 20 },
-  ]),
+  requireAuth,
+  upload.array('media', 10),
   async (req, res) => {
     try {
       const {
@@ -152,17 +153,17 @@ app.post(
         headline3,
         description1,
         description2,
-      } = req.body || {};
+      } = req.body;
 
-      const custId = accounts[(country || '').toUpperCase()];
-      if (!custId) return res.status(400).json({ error: 'invalid country', country });
-      if (!name || !dailyBudgetEur || !finalUrl) {
-        return res.status(400).json({ error: 'missing required fields (name, dailyBudgetEur, finalUrl)' });
-      }
+      const cc = (country || '').toUpperCase();
+      const customerId = accounts[cc];
+      if (!customerId) return res.status(400).json({ error: 'unknown country' });
+      if (!name) return res.status(400).json({ error: 'name required' });
 
-      const result = await ga.createSearchCampaign(custId, {
+      const budget = parseFloat(dailyBudgetEur || '10');
+      const out = await gads.createSearchCampaign(customerId, {
         name,
-        dailyBudgetEur: Number(dailyBudgetEur),
+        dailyBudgetEur: budget,
         finalUrl,
         headline1,
         headline2,
@@ -171,38 +172,35 @@ app.post(
         description2,
       });
 
-      const filesMeta = {
-        videos: (req.files?.videos || []).map((f) => ({
-          original: f.originalname,
-          stored: f.filename,
-          size: f.size,
-          mimetype: f.mimetype,
-        })),
-        images: (req.files?.images || []).map((f) => ({
-          original: f.originalname,
-          stored: f.filename,
-          size: f.size,
-          mimetype: f.mimetype,
-        })),
-      };
+      const mediaFiles = (req.files || []).map((f) => ({
+        originalName: f.originalname,
+        size: f.size,
+        path: f.path,
+      }));
 
-      res.json({
-        ok: true,
-        country,
-        customerId: custId,
-        campaign: result,
-        files: filesMeta,
-      });
+      res.json({ ok: true, country: cc, customerId, ...out, media: mediaFiles });
     } catch (e) {
-      console.error('[upload-campaign]', e);
+      console.error('upload-campaign error', e);
       res.status(500).json({ error: e.message, body: e.body });
     }
   }
 );
 
-app.use(express.static(path.join(__dirname, 'public')));
+// ----- Health -----
+app.get('/api/health', (req, res) => {
+  res.json({
+    ok: true,
+    service: 'gocpc',
+    accounts: Object.keys(accounts),
+    hasGoogleAds: Boolean(
+      process.env.GOOGLE_ADS_DEVELOPER_TOKEN &&
+        process.env.GOOGLE_ADS_REFRESH_TOKEN &&
+        process.env.GOOGLE_ADS_CLIENT_ID
+    ),
+  });
+});
 
-app.listen(PORT, '127.0.0.1', () => {
-  console.log(`[gocpc] listening on http://127.0.0.1:${PORT}`);
-  console.log(`[gocpc] accounts: ${Object.keys(accounts).join(', ')}`);
+app.listen(PORT, () => {
+  console.log(`gocpc listening on ${PORT}`);
+  console.log('accounts:', Object.keys(accounts).join(', '));
 });

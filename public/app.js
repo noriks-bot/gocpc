@@ -1,41 +1,62 @@
-// goCPC frontend SPA
-const main = document.getElementById('main');
-const meEl = document.getElementById('me');
-let accounts = {};
+// goCPC SPA — hash router + 4 pages
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const main = $('#main');
 
-const FLAG = { HR: '🇭🇷', CZ: '🇨🇿', PL: '🇵🇱', GR: '🇬🇷', IT: '🇮🇹', HU: '🇭🇺', SK: '🇸🇰', SI: '🇸🇮', DE: '🇩🇪', RO: '🇷🇴', BG: '🇧🇬' };
+const COUNTRY_NAMES = {
+  HR: 'Hrvaška', CZ: 'Češka', PL: 'Poljska', GR: 'Grčija',
+  IT: 'Italija', HU: 'Madžarska', SK: 'Slovaška', SI: 'Slovenija',
+  DE: 'Nemčija', RO: 'Romunija', BG: 'Bolgarija'
+};
 
-// Brand hints from noriks-creative skills (per market)
+const COUNTRY_URLS = {
+  HR: 'https://noriks.com/hr/', CZ: 'https://noriks.com/cz/',
+  PL: 'https://noriks.com/pl/', GR: 'https://noriks.com/gr/',
+  IT: 'https://noriks.com/it/', HU: 'https://noriks.com/hu/',
+  SK: 'https://noriks.com/sk/', SI: 'https://noriks.com/sl/',
+  RO: 'https://noriks.com/ro/', DE: 'https://noriks.com/de/',
+  BG: 'https://noriks.com/bg/'
+};
+
 const HEADLINES = {
+  HR: ['PIVSKI TRBUH?', 'PROBAJ OVO.', 'OPROSTITE!'],
+  SK: ['PIVNÉ BRUŠKO?', 'VYSKÚŠAJTE TOTO.', 'PERFEKTNÝ STRIH'],
+  CZ: ['PIVNÍ BŘICHO?', 'VYZKOUŠEJ TOHLE.', 'PERFEKTNÍ STŘIH'],
+  HU: ['SÖRHAS?', 'PRÓBÁLD KI EZT.', 'TÖKÉLETES SZABÁS'],
+  PL: ['PIWNY BRZUCH?', 'SPRÓBUJ TEGO.', 'IDEALNY KRÓJ'],
+  GR: ['ΚΟΙΛΙΑ ΑΠΟ ΜΠΥΡΑ?', 'ΔΟΚΙΜΑΣΕ ΑΥΤΟ.', 'ΤΕΛΕΙΑ ΕΦΑΡΜΟΓΗ'],
+  IT: ['PANCIA DA BIRRA?', 'PROVA QUESTO.', 'TAGLIO PERFETTO'],
   SI: ['PIVSKI TREBUH?', 'PREIZKUSI TO.', 'OPROSTITE!'],
-  HR: ['PIVSKI TRBUH?', 'PROBAJ OVO.'],
-  SK: ['PIVNÉ BRUŠKO?', 'VYSKÚŠAJTE TOTO.'],
-  CZ: ['PIVNÍ BŘICHO?', 'VYZKOUŠEJ TOHLE.'],
-  HU: ['SÖRHAS?', 'PRÓBÁLD KI EZT.'],
-  PL: ['PIWNY BRZUCH?', 'SPRÓBUJ TEGO.'],
-  GR: ['ΚΟΙΛΙΑ ΑΠΟ ΜΠΥΡΑ?', 'ΔΟΚΙΜΑΣΕ ΑΥΤΟ.'],
-  IT: ['PANCIA DA BIRRA?', 'PROVA QUESTO.'],
-  DE: ['BIERBAUCH?', 'PROBIER DAS.'],
-  RO: ['BURTA DE BERE?', 'ÎNCEARCĂ ASTA.'],
-  BG: ['БИРЕНО КОРЕМЧЕ?', 'ОПИТАЙ ТОВА.'],
-};
-const URLS = {
-  SI: 'https://noriks.com/sl/', HR: 'https://noriks.com/hr/', SK: 'https://noriks.com/sk/',
-  CZ: 'https://noriks.com/cz/', HU: 'https://noriks.com/hu/', PL: 'https://noriks.com/pl/',
-  GR: 'https://noriks.com/gr/', IT: 'https://noriks.com/it/',
+  DE: ['BIERBAUCH?', 'PROBIER DAS.', 'PERFEKTER SCHNITT'],
+  RO: ['BURTA DE BERE?', 'ÎNCEARCĂ ASTA.', 'CROIALA PERFECTĂ'],
+  BG: ['БИРЕНО ШКЕМБЕ?', 'ОПИТАЙ ТОВА.', 'ПЕРФЕКТНА КРОЙКА']
 };
 
-function fmtMoney(n, ccy) {
-  if (n == null || isNaN(n)) return '—';
-  return n.toLocaleString('sl-SI', { maximumFractionDigits: 2 }) + (ccy ? ' ' + ccy : '');
+const DESCRIPTIONS = {
+  HR: ['Majica koja skriva trbuh, ističe ramena. 30 dana bez rizika.', 'Perfect Fit garantovan. Besplatna dostava iznad 70€.'],
+  SK: ['Tričko ktoré skryje bruško a zvýrazní ramená. 30 dní bez rizika.', 'Perfect Fit zaručený. Doprava zdarma nad 70€.'],
+  CZ: ['Tričko které skryje břicho a zvýrazní ramena. 30 dní bez rizika.', 'Perfect Fit zaručený. Doprava zdarma nad 70€.'],
+  HU: ['Póló ami elrejti a sörhasat. 30 nap visszafizetési garancia.', 'Perfect Fit garantált. Ingyenes szállítás 70€ felett.'],
+  PL: ['Koszulka która ukrywa brzuch i podkreśla ramiona.', 'Perfect Fit gwarantowany. Darmowa dostawa od 70€.'],
+  GR: ['Μπλούζα που κρύβει την κοιλιά. 30 ημέρες χωρίς ρίσκο.', 'Perfect Fit εγγυημένο. Δωρεάν παράδοση άνω των 70€.'],
+  IT: ['Maglietta che nasconde la pancia ed evidenzia le spalle.', 'Perfect Fit garantito. Spedizione gratuita sopra i 70€.'],
+  SI: ['Majica, ki skrije trebuh in poudari ramena. 30 dni brez tveganja.', 'Perfect Fit zagotovljen. Brezplačna dostava nad 70€.'],
+  DE: ['Shirt das Bauch verbirgt und Schultern betont.', 'Perfect Fit garantiert. Kostenloser Versand ab 70€.'],
+  RO: ['Tricou care ascunde burta și subliniază umerii.', 'Perfect Fit garantat. Livrare gratuită peste 70€.'],
+  BG: ['Тениска която скрива корема и подчертава раменете.', 'Perfect Fit гарантиран. Безплатна доставка над 70€.']
+};
+
+let APP_ACCOUNTS = {};
+let APP_USER = null;
+
+function fmt(n, dec = 0) {
+  if (n == null || isNaN(n)) return '–';
+  return Number(n).toLocaleString('sl-SI', { minimumFractionDigits: dec, maximumFractionDigits: dec });
 }
-function fmtNum(n) {
-  if (n == null || isNaN(n)) return '—';
-  return Math.round(n).toLocaleString('sl-SI');
-}
-function fmtPct(n) {
-  if (n == null || isNaN(n)) return '—';
-  return (n * 100).toFixed(2) + '%';
+function eur(n) { return n == null ? '–' : '€' + fmt(n, 2); }
+function pct(n) { return n == null ? '–' : fmt(n * 100, 2) + '%'; }
+function escHTML(s) {
+  return String(s ?? '').replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 
 async function api(path, opts = {}) {
@@ -44,348 +65,382 @@ async function api(path, opts = {}) {
     location.href = '/login.html';
     throw new Error('unauthorized');
   }
-  if (!r.ok) {
-    const d = await r.json().catch(() => ({}));
-    throw new Error(d.error || `HTTP ${r.status}`);
-  }
-  return r.json();
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
+  return j;
 }
 
-async function init() {
+function getRange() {
+  return ($('#rangeSel')?.value) || 'LAST_30_DAYS';
+}
+
+function pageShell(title, withRange = true) {
+  main.innerHTML = `
+    <div class="topbar">
+      <h2>${escHTML(title)}</h2>
+      ${withRange ? `
+        <div class="range">
+          <label>Range:</label>
+          <select id="rangeSel">
+            <option value="LAST_7_DAYS">Last 7 days</option>
+            <option value="LAST_14_DAYS">Last 14 days</option>
+            <option value="LAST_30_DAYS" selected>Last 30 days</option>
+            <option value="LAST_90_DAYS">Last 90 days</option>
+            <option value="THIS_MONTH">This month</option>
+            <option value="LAST_MONTH">Last month</option>
+          </select>
+          <button id="refreshBtn">Refresh</button>
+        </div>` : ''
+      }
+    </div>
+    <div class="content" id="pageContent">
+      <div class="loading">Loading…</div>
+    </div>
+  `;
+  if (withRange) {
+    $('#rangeSel').addEventListener('change', () => router());
+    $('#refreshBtn').addEventListener('click', () => router());
+  }
+  return $('#pageContent');
+}
+
+async function pageDashboard() {
+  const content = pageShell('Dashboard');
   try {
-    const me = await api('/api/me');
-    meEl.textContent = `👤 ${me.user}`;
-    accounts = me.accounts || {};
+    const data = await api(`/api/countries-summary?range=${getRange()}`);
+    const tot = data.countries.reduce((a, c) => {
+      if (c.error) return a;
+      a.cost += (c.cost || 0);
+      a.clicks += (c.clicks || 0);
+      a.impressions += (c.impressions || 0);
+      a.conversions += (c.conversions || 0);
+      a.conversionsValue += (c.conversionsValue || 0);
+      return a;
+    }, { cost: 0, clicks: 0, impressions: 0, conversions: 0, conversionsValue: 0 });
+
+    const roas = tot.cost ? tot.conversionsValue / tot.cost : 0;
+    const cpa = tot.conversions ? tot.cost / tot.conversions : 0;
+    const ctr = tot.impressions ? tot.clicks / tot.impressions : 0;
+
+    content.innerHTML = `
+      <div class="kpis">
+        <div class="kpi"><div class="label">Total spend</div><div class="value">${eur(tot.cost)}</div></div>
+        <div class="kpi"><div class="label">Conversions</div><div class="value">${fmt(tot.conversions, 1)}</div></div>
+        <div class="kpi"><div class="label">Conv. value</div><div class="value">${eur(tot.conversionsValue)}</div></div>
+        <div class="kpi"><div class="label">ROAS</div><div class="value">${fmt(roas, 2)}x</div></div>
+        <div class="kpi"><div class="label">CPA</div><div class="value">${eur(cpa)}</div></div>
+        <div class="kpi"><div class="label">Clicks</div><div class="value">${fmt(tot.clicks)}</div><div class="sub">CTR ${pct(ctr)}</div></div>
+      </div>
+
+      <h3 class="section">Per country</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr>
+            <th>Country</th><th>Account</th>
+            <th class="num">Spend</th><th class="num">Clicks</th>
+            <th class="num">Impressions</th><th class="num">Conv.</th>
+            <th class="num">Conv. value</th><th class="num">ROAS</th>
+          </tr></thead>
+          <tbody>
+            ${data.countries.map(c => {
+              if (c.error) return `<tr><td><span class="flag">${c.country}</span></td><td colspan="7" style="color:#ff8a8a;font-size:12px">${escHTML(c.error)}</td></tr>`;
+              const r = c.cost ? (c.conversionsValue / c.cost) : 0;
+              return `<tr>
+                <td><span class="flag">${c.country}</span> ${escHTML(COUNTRY_NAMES[c.country] || '')}</td>
+                <td style="color:var(--text-3);font-size:12px">${c.customerId}</td>
+                <td class="num">${eur(c.cost)}</td>
+                <td class="num">${fmt(c.clicks)}</td>
+                <td class="num">${fmt(c.impressions)}</td>
+                <td class="num">${fmt(c.conversions, 1)}</td>
+                <td class="num">${eur(c.conversionsValue)}</td>
+                <td class="num">${fmt(r, 2)}x</td>
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+    `;
   } catch (e) {
-    return;
+    content.innerHTML = `<div class="error">${escHTML(e.message)}</div>`;
   }
-  document.getElementById('logout').onclick = async () => {
-    await fetch('/api/logout', { method: 'POST' });
-    location.href = '/login.html';
-  };
-  window.addEventListener('hashchange', route);
-  route();
 }
 
-function setActive(name) {
-  document.querySelectorAll('#nav a').forEach((a) => {
-    a.classList.toggle('active', a.dataset.route === name);
+async function pageAccounts() {
+  const content = pageShell('Računi / države');
+  try {
+    const data = await api(`/api/countries-summary?range=${getRange()}`);
+    content.innerHTML = `
+      <div class="notice">Klikni na državo za podrobne kampanje.</div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr>
+            <th>Country</th><th>Customer ID</th>
+            <th class="num">Spend</th><th class="num">Conv.</th>
+            <th class="num">Conv. value</th><th class="num">ROAS</th>
+          </tr></thead>
+          <tbody>
+            ${data.countries.map(c => {
+              if (c.error) return `<tr><td><span class="flag">${c.country}</span></td><td colspan="5" style="color:#ff8a8a;font-size:12px">${escHTML(c.error)}</td></tr>`;
+              const r = c.cost ? (c.conversionsValue / c.cost) : 0;
+              return `<tr style="cursor:pointer" onclick="location.hash='#/account/${c.country}'">
+                <td><span class="flag">${c.country}</span> ${escHTML(COUNTRY_NAMES[c.country] || '')}</td>
+                <td style="color:var(--text-3);font-size:12px">${c.customerId}</td>
+                <td class="num">${eur(c.cost)}</td>
+                <td class="num">${fmt(c.conversions, 1)}</td>
+                <td class="num">${eur(c.conversionsValue)}</td>
+                <td class="num">${fmt(r, 2)}x</td>
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+    `;
+  } catch (e) {
+    content.innerHTML = `<div class="error">${escHTML(e.message)}</div>`;
+  }
+}
+
+async function pageAccountDetail(country) {
+  const content = pageShell(`${country} — ${COUNTRY_NAMES[country] || ''}`);
+  try {
+    const data = await api(`/api/account/${country}?range=${getRange()}`);
+    const s = data.summary || {};
+    const r = s.cost ? (s.conversionsValue / s.cost) : 0;
+    content.innerHTML = `
+      <div class="kpis">
+        <div class="kpi"><div class="label">Spend</div><div class="value">${eur(s.cost)}</div><div class="sub">${s.currency || ''}</div></div>
+        <div class="kpi"><div class="label">Clicks</div><div class="value">${fmt(s.clicks)}</div></div>
+        <div class="kpi"><div class="label">Conversions</div><div class="value">${fmt(s.conversions, 1)}</div></div>
+        <div class="kpi"><div class="label">ROAS</div><div class="value">${fmt(r, 2)}x</div></div>
+      </div>
+
+      <h3 class="section">Campaigns (${data.campaigns.length})</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr>
+            <th>Name</th><th>Status</th><th>Type</th>
+            <th class="num">Spend</th><th class="num">Clicks</th>
+            <th class="num">Impr.</th><th class="num">Conv.</th>
+            <th class="num">Conv. value</th>
+          </tr></thead>
+          <tbody>
+            ${data.campaigns.length ? data.campaigns.map(c => `
+              <tr>
+                <td>${escHTML(c.name || '–')}</td>
+                <td><span class="status-pill ${(c.status || '').toLowerCase()}">${escHTML(c.status || '–')}</span></td>
+                <td style="font-size:11px;color:var(--text-3)">${escHTML(c.type || '–')}</td>
+                <td class="num">${eur(c.cost)}</td>
+                <td class="num">${fmt(c.clicks)}</td>
+                <td class="num">${fmt(c.impressions)}</td>
+                <td class="num">${fmt(c.conversions, 1)}</td>
+                <td class="num">${eur(c.conversionsValue)}</td>
+              </tr>
+            `).join('') : '<tr><td colspan="8" style="text-align:center;padding:30px;color:var(--text-3)">No campaigns</td></tr>'}
+          </tbody>
+        </table>
+      </div>
+    `;
+  } catch (e) {
+    content.innerHTML = `<div class="error">${escHTML(e.message)}</div>`;
+  }
+}
+
+async function pageCampaigns() {
+  const content = pageShell('Kampanje (vse države)');
+  try {
+    const data = await api(`/api/campaigns?range=${getRange()}`);
+    content.innerHTML = `
+      <div class="notice">Skupaj <strong>${data.total}</strong> kampanj v ${Object.keys(APP_ACCOUNTS).length} državah, sortirano po porabi.</div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr>
+            <th>Country</th><th>Campaign</th><th>Status</th><th>Type</th>
+            <th class="num">Spend</th><th class="num">Clicks</th>
+            <th class="num">Conv.</th><th class="num">ROAS</th>
+          </tr></thead>
+          <tbody>
+            ${data.campaigns.length ? data.campaigns.map(c => {
+              const r = c.cost ? (c.conversionsValue / c.cost) : 0;
+              return `<tr>
+                <td><span class="flag">${c.country}</span></td>
+                <td>${escHTML(c.name || '–')}</td>
+                <td><span class="status-pill ${(c.status || '').toLowerCase()}">${escHTML(c.status || '–')}</span></td>
+                <td style="font-size:11px;color:var(--text-3)">${escHTML(c.type || '–')}</td>
+                <td class="num">${eur(c.cost)}</td>
+                <td class="num">${fmt(c.clicks)}</td>
+                <td class="num">${fmt(c.conversions, 1)}</td>
+                <td class="num">${fmt(r, 2)}x</td>
+              </tr>`;
+            }).join('') : '<tr><td colspan="8" style="text-align:center;padding:30px;color:var(--text-3)">No campaigns</td></tr>'}
+          </tbody>
+        </table>
+      </div>
+    `;
+  } catch (e) {
+    content.innerHTML = `<div class="error">${escHTML(e.message)}</div>`;
+  }
+}
+
+function pageUpload() {
+  const content = pageShell('Upload new campaign', false);
+  const countries = Object.keys(APP_ACCOUNTS);
+
+  content.innerHTML = `
+    <div class="notice">
+      Naloži novo <strong>Search kampanjo</strong> v Google Ads. Kampanja se kreira v statusu <strong>PAUSED</strong> — preden gre live, ročno preveri v Google Ads UI in vključi.
+      Material (video/slike) se shrani za poznejšo Performance Max / video integracijo.
+    </div>
+
+    <form id="uploadForm" enctype="multipart/form-data">
+      <div class="form-grid">
+        <div class="field">
+          <label>Country / market *</label>
+          <select name="country" id="country" required>
+            <option value="">— select —</option>
+            ${countries.map(c => `<option value="${c}">${c} — ${COUNTRY_NAMES[c] || ''}</option>`).join('')}
+          </select>
+          <div class="hint">7 aktivnih MCC accountov</div>
+        </div>
+
+        <div class="field">
+          <label>Campaign name *</label>
+          <input name="name" required placeholder="e.g. 2026-05_HR_PivskiTrbuh_Search">
+          <div class="hint">Convention: YYYY-MM_MARKET_Hook_Type</div>
+        </div>
+
+        <div class="field">
+          <label>Daily budget (EUR) *</label>
+          <input name="dailyBudgetEur" type="number" step="0.01" min="1" required placeholder="e.g. 25.00">
+        </div>
+
+        <div class="field">
+          <label>Final URL *</label>
+          <input name="finalUrl" type="url" id="finalUrl" required placeholder="https://noriks.com/…">
+          <div class="hint">Landing page. Auto-fills based on country.</div>
+        </div>
+
+        <div class="field"><label>Headline 1</label><input name="headline1" id="h1" maxlength="30" placeholder="max 30 char"></div>
+        <div class="field"><label>Headline 2</label><input name="headline2" id="h2" maxlength="30" placeholder="max 30 char"></div>
+        <div class="field"><label>Headline 3</label><input name="headline3" id="h3" maxlength="30" placeholder="max 30 char"></div>
+        <div class="field"></div>
+
+        <div class="field full"><label>Description 1</label><textarea name="description1" id="d1" maxlength="90" placeholder="max 90 char"></textarea></div>
+        <div class="field full"><label>Description 2</label><textarea name="description2" id="d2" maxlength="90" placeholder="max 90 char"></textarea></div>
+
+        <div class="field full">
+          <label>Video creatives (optional, MP4)</label>
+          <label for="videos" class="dropzone">📹 Klikni za izbiro MP4 datotek (max 5, do 500MB each)</label>
+          <input type="file" name="videos" id="videos" multiple accept="video/*" style="display:none">
+          <div class="file-list" id="videoList"></div>
+        </div>
+
+        <div class="field full">
+          <label>Image creatives (optional, JPG/PNG)</label>
+          <label for="images" class="dropzone">🖼️ Klikni za izbiro slik (max 20)</label>
+          <input type="file" name="images" id="images" multiple accept="image/*" style="display:none">
+          <div class="file-list" id="imageList"></div>
+        </div>
+
+        <div class="full" style="display:flex;gap:12px;align-items:center;margin-top:10px">
+          <button type="submit" class="primary" id="submitBtn">Create campaign (PAUSED)</button>
+          <span id="formMsg" style="font-size:13px;color:var(--text-3)"></span>
+        </div>
+      </div>
+    </form>
+
+    <div id="result" style="margin-top:24px"></div>
+  `;
+
+  $('#country').addEventListener('change', (e) => {
+    const c = e.target.value;
+    if (!c) return;
+    if (COUNTRY_URLS[c] && !$('#finalUrl').value) $('#finalUrl').value = COUNTRY_URLS[c];
+    if (HEADLINES[c]) {
+      if (!$('#h1').value) $('#h1').value = HEADLINES[c][0] || '';
+      if (!$('#h2').value) $('#h2').value = HEADLINES[c][1] || '';
+      if (!$('#h3').value) $('#h3').value = HEADLINES[c][2] || '';
+    }
+    if (DESCRIPTIONS[c]) {
+      if (!$('#d1').value) $('#d1').value = DESCRIPTIONS[c][0] || '';
+      if (!$('#d2').value) $('#d2').value = DESCRIPTIONS[c][1] || '';
+    }
+  });
+
+  function wireFilePicker(inputId, listId) {
+    const inp = $('#' + inputId);
+    const list = $('#' + listId);
+    inp.addEventListener('change', () => {
+      list.innerHTML = [...inp.files].map(f => `
+        <div class="file-item"><span>${escHTML(f.name)}</span><span>${fmt(f.size / 1024 / 1024, 2)} MB</span></div>
+      `).join('');
+    });
+  }
+  wireFilePicker('videos', 'videoList');
+  wireFilePicker('images', 'imageList');
+
+  $('#uploadForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const btn = $('#submitBtn');
+    const msg = $('#formMsg');
+    const result = $('#result');
+    btn.disabled = true;
+    msg.textContent = 'Creating…';
+    result.innerHTML = '';
+    try {
+      const fd = new FormData(e.target);
+      const r = await fetch('/api/upload-campaign', { method: 'POST', body: fd });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error || 'Upload failed');
+      result.innerHTML = `
+        <div class="success">
+          ✅ Campaign created (PAUSED) in ${j.country} — customer ${j.customerId}.<br>
+          Resource: <code>${escHTML(j.campaign?.campaignResource || '')}</code>
+        </div>
+        <pre class="json-debug">${escHTML(JSON.stringify(j, null, 2))}</pre>
+      `;
+      msg.textContent = '✅ Done.';
+      e.target.reset();
+      $('#videoList').innerHTML = '';
+      $('#imageList').innerHTML = '';
+    } catch (err) {
+      result.innerHTML = `<div class="error">❌ ${escHTML(err.message)}</div>`;
+      msg.textContent = '';
+    } finally {
+      btn.disabled = false;
+    }
   });
 }
 
-function route() {
-  const h = (location.hash || '#/dashboard').replace('#/', '');
-  setActive(h);
-  if (h === 'dashboard') return renderDashboard();
-  if (h === 'campaigns') return renderCampaigns();
-  if (h === 'accounts') return renderAccounts();
-  if (h === 'upload') return renderUpload();
-  renderDashboard();
+async function router() {
+  const hash = location.hash || '#/dashboard';
+  const parts = hash.replace(/^#\//, '').split('/');
+  const route = parts[0] || 'dashboard';
+
+  $$('#nav a').forEach(a => a.classList.toggle('active', a.dataset.route === route));
+
+  if (route === 'dashboard') await pageDashboard();
+  else if (route === 'accounts') await pageAccounts();
+  else if (route === 'campaigns') await pageCampaigns();
+  else if (route === 'upload') pageUpload();
+  else if (route === 'account' && parts[1]) await pageAccountDetail(parts[1].toUpperCase());
+  else location.hash = '#/dashboard';
 }
 
-function rangeSelect(current) {
-  const opts = ['TODAY', 'YESTERDAY', 'LAST_7_DAYS', 'LAST_14_DAYS', 'LAST_30_DAYS', 'THIS_MONTH', 'LAST_MONTH'];
-  return `<select id="rangeSel">${opts.map((o) => `<option value="${o}" ${o === current ? 'selected' : ''}>${o.replace(/_/g, ' ')}</option>`).join('')}</select>`;
-}
-
-async function renderDashboard() {
-  main.innerHTML = `
-    <div class="page-head">
-      <div>
-        <h2>Dashboard</h2>
-        <div class="sub">Pregled vseh kampanj po državah</div>
-      </div>
-      <div class="controls">${rangeSelect('LAST_30_DAYS')}</div>
-    </div>
-    <div id="content"><div class="loading">Loading countries...</div></div>
-  `;
-  document.getElementById('rangeSel').onchange = (e) => loadDashboard(e.target.value);
-  loadDashboard('LAST_30_DAYS');
-}
-
-async function loadDashboard(range) {
-  const c = document.getElementById('content');
-  c.innerHTML = '<div class="loading">Loading...</div>';
+async function boot() {
   try {
-    const data = await api(`/api/countries-summary?range=${range}`);
-    const totals = data.countries.reduce(
-      (a, x) => {
-        if (!x.error) {
-          a.cost += x.cost || 0;
-          a.clicks += x.clicks || 0;
-          a.impressions += x.impressions || 0;
-          a.conversions += x.conversions || 0;
-          a.conversionsValue += x.conversionsValue || 0;
-        }
-        return a;
-      },
-      { cost: 0, clicks: 0, impressions: 0, conversions: 0, conversionsValue: 0 }
-    );
-    const cpa = totals.conversions ? totals.cost / totals.conversions : 0;
-    const roas = totals.cost ? totals.conversionsValue / totals.cost : 0;
-
-    c.innerHTML = `
-      <div class="kpi-grid">
-        <div class="kpi"><div class="label">Skupna poraba</div><div class="value">${fmtMoney(totals.cost)}<span class="ccy">EUR</span></div></div>
-        <div class="kpi"><div class="label">Impressions</div><div class="value">${fmtNum(totals.impressions)}</div></div>
-        <div class="kpi"><div class="label">Kliki</div><div class="value">${fmtNum(totals.clicks)}</div></div>
-        <div class="kpi"><div class="label">Konverzije</div><div class="value">${fmtNum(totals.conversions)}</div></div>
-        <div class="kpi"><div class="label">CPA</div><div class="value">${fmtMoney(cpa)}<span class="ccy">EUR</span></div></div>
-        <div class="kpi"><div class="label">ROAS</div><div class="value">${roas.toFixed(2)}x</div></div>
-      </div>
-      <div class="tbl-wrap">
-        <div class="tbl-head">Po državah</div>
-        <table>
-          <thead><tr>
-            <th>Država</th><th>Customer ID</th><th class="num">Impr.</th><th class="num">Kliki</th>
-            <th class="num">Cost</th><th class="num">Konv.</th><th class="num">Conv. value</th><th class="num">CPA</th><th class="num">ROAS</th>
-          </tr></thead>
-          <tbody>
-            ${data.countries.map((x) => {
-              if (x.error) return `<tr><td><span class="flag">${FLAG[x.country] || ''} ${x.country}</span></td><td colspan="8" style="color:#ef4444">${x.error}</td></tr>`;
-              const cpa = x.conversions ? x.cost / x.conversions : 0;
-              const roas = x.cost ? x.conversionsValue / x.cost : 0;
-              return `<tr>
-                <td><a href="#/accounts/${x.country}" style="color:#fff;text-decoration:none"><span class="flag">${FLAG[x.country] || ''} ${x.country}</span></a></td>
-                <td style="color:#666">${x.customerId}</td>
-                <td class="num">${fmtNum(x.impressions)}</td>
-                <td class="num">${fmtNum(x.clicks)}</td>
-                <td class="num">${fmtMoney(x.cost)} ${x.currency || ''}</td>
-                <td class="num">${fmtNum(x.conversions)}</td>
-                <td class="num">${fmtMoney(x.conversionsValue)}</td>
-                <td class="num">${fmtMoney(cpa)}</td>
-                <td class="num">${roas.toFixed(2)}x</td>
-              </tr>`;
-            }).join('')}
-          </tbody>
-        </table>
-      </div>
-    `;
+    const me = await api('/api/me');
+    APP_USER = me.user;
+    APP_ACCOUNTS = me.accounts || {};
+    $('#me').textContent = APP_USER + ' · ' + Object.keys(APP_ACCOUNTS).length + ' accounts';
   } catch (e) {
-    c.innerHTML = `<div class="notice error">${e.message}</div>`;
+    return;
   }
+  $('#logout').addEventListener('click', async () => {
+    await fetch('/api/logout', { method: 'POST' });
+    location.href = '/login.html';
+  });
+  window.addEventListener('hashchange', router);
+  router();
 }
 
-async function renderCampaigns() {
-  main.innerHTML = `
-    <div class="page-head">
-      <div><h2>Vse kampanje</h2><div class="sub">Flat list across all accounts</div></div>
-      <div class="controls">${rangeSelect('LAST_30_DAYS')}</div>
-    </div>
-    <div id="content"><div class="loading">Loading campaigns...</div></div>
-  `;
-  document.getElementById('rangeSel').onchange = (e) => loadCampaigns(e.target.value);
-  loadCampaigns('LAST_30_DAYS');
-}
-
-async function loadCampaigns(range) {
-  const c = document.getElementById('content');
-  c.innerHTML = '<div class="loading">Loading...</div>';
-  try {
-    const data = await api(`/api/campaigns?range=${range}`);
-    c.innerHTML = `
-      <div class="tbl-wrap">
-        <div class="tbl-head">${data.total} kampanj</div>
-        <table>
-          <thead><tr>
-            <th>Država</th><th>Kampanja</th><th>Status</th><th>Tip</th>
-            <th class="num">Impr.</th><th class="num">Kliki</th><th class="num">Cost</th>
-            <th class="num">Konv.</th><th class="num">CPA</th>
-          </tr></thead>
-          <tbody>
-            ${data.campaigns.map((x) => {
-              const cpa = x.conversions ? x.cost / x.conversions : 0;
-              return `<tr>
-                <td><span class="flag">${FLAG[x.country] || ''} ${x.country}</span></td>
-                <td>${x.name || '—'}</td>
-                <td><span class="status-tag status-${x.status}">${x.status || '—'}</span></td>
-                <td style="color:#888;font-size:12px">${(x.type || '').replace('_', ' ')}</td>
-                <td class="num">${fmtNum(x.impressions)}</td>
-                <td class="num">${fmtNum(x.clicks)}</td>
-                <td class="num">${fmtMoney(x.cost)}</td>
-                <td class="num">${fmtNum(x.conversions)}</td>
-                <td class="num">${fmtMoney(cpa)}</td>
-              </tr>`;
-            }).join('')}
-          </tbody>
-        </table>
-      </div>
-    `;
-  } catch (e) {
-    c.innerHTML = `<div class="notice error">${e.message}</div>`;
-  }
-}
-
-async function renderAccounts() {
-  main.innerHTML = `
-    <div class="page-head">
-      <div><h2>Računi / države</h2><div class="sub">${Object.keys(accounts).length} povezanih računov</div></div>
-    </div>
-    <div class="tbl-wrap">
-      <div class="tbl-head">MCC accounts</div>
-      <table>
-        <thead><tr><th>Država</th><th>Customer ID</th><th>Trgovina</th></tr></thead>
-        <tbody>
-          ${Object.entries(accounts).map(([c, id]) => `
-            <tr>
-              <td><span class="flag">${FLAG[c] || ''} ${c}</span></td>
-              <td style="color:#666;font-family:monospace">${id}</td>
-              <td><a href="${URLS[c] || '#'}" target="_blank" style="color:#F5D900">${URLS[c] || ''}</a></td>
-            </tr>
-          `).join('')}
-        </tbody>
-      </table>
-    </div>
-  `;
-}
-
-async function renderUpload() {
-  const countryOpts = Object.keys(accounts).map((c) => `<option value="${c}">${FLAG[c] || ''} ${c}</option>`).join('');
-  main.innerHTML = `
-    <div class="page-head">
-      <div><h2>Upload new campaign</h2><div class="sub">Performance / Search kampanja (kreirana v PAUSED stanju)</div></div>
-    </div>
-    <div class="form-card">
-      <form id="uploadForm">
-        <div class="form-row">
-          <div class="form-field">
-            <label>Država</label>
-            <select name="country" id="countrySel" required>${countryOpts}</select>
-            <div class="hint">Glede na izbor se nastavijo predlogi za headline + landing URL</div>
-          </div>
-          <div class="form-field">
-            <label>Daily budget (EUR)</label>
-            <input type="number" name="dailyBudgetEur" step="0.5" min="1" value="20" required>
-          </div>
-        </div>
-        <div class="form-row full">
-          <div class="form-field">
-            <label>Naziv kampanje</label>
-            <input type="text" name="name" placeholder="goCPC — HR — Shirts 2026-05" required>
-          </div>
-        </div>
-        <div class="form-row full">
-          <div class="form-field">
-            <label>Final URL (landing)</label>
-            <input type="url" name="finalUrl" id="finalUrlInput" required>
-          </div>
-        </div>
-
-        <div class="brand-hints" id="headlineHints">
-          <strong>Predlogi headline (Noriks brand bible):</strong>
-          <div class="row" id="headlineChips"></div>
-        </div>
-
-        <div class="form-row">
-          <div class="form-field">
-            <label>Headline 1 (max 30)</label>
-            <input type="text" name="headline1" maxlength="30" required>
-          </div>
-          <div class="form-field">
-            <label>Headline 2 (max 30)</label>
-            <input type="text" name="headline2" maxlength="30">
-          </div>
-        </div>
-        <div class="form-row full">
-          <div class="form-field">
-            <label>Headline 3 (max 30)</label>
-            <input type="text" name="headline3" maxlength="30">
-          </div>
-        </div>
-        <div class="form-row">
-          <div class="form-field">
-            <label>Description 1 (max 90)</label>
-            <textarea name="description1" maxlength="90" required></textarea>
-          </div>
-          <div class="form-field">
-            <label>Description 2 (max 90)</label>
-            <textarea name="description2" maxlength="90"></textarea>
-          </div>
-        </div>
-
-        <div class="form-row">
-          <div class="form-field">
-            <label>Videi (UGC/TikTok, MP4)</label>
-            <div class="file-drop" id="videoDrop">📹 Klikni ali povleci video fajle</div>
-            <input type="file" name="videos" id="videoInput" accept="video/*" multiple style="display:none">
-            <div class="file-list" id="videoList"></div>
-          </div>
-          <div class="form-field">
-            <label>Slike (statične kreative)</label>
-            <div class="file-drop" id="imageDrop">🖼️ Klikni ali povleci slike</div>
-            <input type="file" name="images" id="imageInput" accept="image/*" multiple style="display:none">
-            <div class="file-list" id="imageList"></div>
-          </div>
-        </div>
-
-        <button type="submit" class="btn" id="submitBtn">🚀 Ustvari kampanjo</button>
-      </form>
-      <div id="uploadResult"></div>
-    </div>
-  `;
-
-  const countrySel = document.getElementById('countrySel');
-  const finalUrl = document.getElementById('finalUrlInput');
-  const chips = document.getElementById('headlineChips');
-  const form = document.getElementById('uploadForm');
-  const result = document.getElementById('uploadResult');
-
-  function updateHints() {
-    const c = countrySel.value;
-    finalUrl.value = URLS[c] || '';
-    const heads = HEADLINES[c] || [];
-    chips.innerHTML = heads.map((h) => `<span class="chip" data-h="${h}">${h}</span>`).join('') || '<span style="color:#666">— ni predlogov za to državo</span>';
-    chips.querySelectorAll('.chip').forEach((el) => {
-      el.onclick = () => {
-        const empty = ['headline1', 'headline2', 'headline3'].find((k) => !form[k].value);
-        if (empty) form[empty].value = el.dataset.h;
-      };
-    });
-  }
-  countrySel.onchange = updateHints;
-  updateHints();
-
-  // file inputs
-  function wireDrop(dropId, inputId, listId) {
-    const drop = document.getElementById(dropId);
-    const inp = document.getElementById(inputId);
-    const list = document.getElementById(listId);
-    drop.onclick = () => inp.click();
-    inp.onchange = () => {
-      list.innerHTML = Array.from(inp.files).map((f) => `<div class="file">📎 ${f.name} <span style="color:#666">(${(f.size / 1024 / 1024).toFixed(1)} MB)</span></div>`).join('');
-    };
-  }
-  wireDrop('videoDrop', 'videoInput', 'videoList');
-  wireDrop('imageDrop', 'imageInput', 'imageList');
-
-  form.onsubmit = async (e) => {
-    e.preventDefault();
-    const btn = document.getElementById('submitBtn');
-    btn.disabled = true;
-    btn.textContent = '⏳ Pošiljam...';
-    result.innerHTML = '';
-    try {
-      const fd = new FormData(form);
-      const r = await fetch('/api/upload-campaign', { method: 'POST', body: fd });
-      const d = await r.json();
-      if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
-      result.innerHTML = `<div class="notice success" style="margin-top:24px">
-        ✅ Kampanja uspešno ustvarjena (PAUSED).<br>
-        Country: <b>${d.country}</b><br>
-        Customer: <code>${d.customerId}</code><br>
-        Campaign resource: <code>${d.campaign.campaignResource}</code><br>
-        Budget resource: <code>${d.campaign.budgetResource}</code><br>
-        Files: ${(d.files.videos.length + d.files.images.length)} (${d.files.videos.length} videos, ${d.files.images.length} images)<br>
-        <em style="color:#888">${d.campaign.note}</em>
-      </div>`;
-      form.reset();
-      updateHints();
-    } catch (err) {
-      result.innerHTML = `<div class="notice error" style="margin-top:24px">❌ ${err.message}</div>`;
-    }
-    btn.disabled = false;
-    btn.textContent = '🚀 Ustvari kampanjo';
-  };
-}
-
-init();
+boot();

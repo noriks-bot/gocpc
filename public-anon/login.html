@@ -1,53 +1,145 @@
 <!doctype html>
 <html lang="sl">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>goCPC — login</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>goCPC — Login</title>
   <style>
-    *{box-sizing:border-box;margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
-    body{background:#000;color:#fff;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px}
-    .card{background:#0f0f0f;border:1px solid #1f1f1f;border-radius:16px;padding:40px;width:100%;max-width:400px}
-    .logo{display:inline-block;background:#F5D900;color:#000;padding:6px 14px;font-weight:900;font-size:12px;letter-spacing:2px;border-radius:4px;margin-bottom:24px}
-    h1{font-size:32px;font-weight:900;letter-spacing:-1px;margin-bottom:8px}
-    h1 span{color:#F5D900}
-    .sub{color:#888;font-size:14px;margin-bottom:32px}
-    label{display:block;font-size:12px;color:#888;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;margin-top:16px}
-    input{width:100%;background:#000;border:1px solid #2a2a2a;color:#fff;padding:14px 16px;font-size:15px;border-radius:8px;outline:none;transition:border .15s}
-    input:focus{border-color:#F5D900}
-    button{width:100%;background:#F5D900;color:#000;border:none;padding:14px;font-size:14px;font-weight:800;letter-spacing:1px;border-radius:8px;cursor:pointer;margin-top:24px;transition:opacity .15s}
-    button:hover{opacity:.85}
-    button:disabled{opacity:.4;cursor:not-allowed}
-    .err{color:#ef4444;font-size:13px;margin-top:16px;display:none}
-    .err.show{display:block}
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #0e0e10;
+      color: #f4f4f5;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif;
+    }
+    .card {
+      background: #18181b;
+      border: 1px solid #27272a;
+      border-radius: 14px;
+      padding: 32px 28px;
+      width: 360px;
+      box-shadow: 0 20px 50px rgba(0,0,0,0.4);
+    }
+    .brand {
+      text-align: center;
+      margin-bottom: 24px;
+    }
+    .brand-pill {
+      display: inline-block;
+      background: #000;
+      color: #fff;
+      padding: 6px 14px;
+      border-radius: 999px;
+      font-weight: 900;
+      font-size: 12px;
+      letter-spacing: 1px;
+      margin-bottom: 14px;
+    }
+    h1 {
+      font-size: 26px;
+      margin: 0;
+      font-weight: 900;
+      letter-spacing: -0.5px;
+    }
+    h1 span { color: #F5D900; }
+    p.sub { color: #71717a; font-size: 13px; margin: 6px 0 0; }
+    form { margin-top: 22px; display: flex; flex-direction: column; gap: 12px; }
+    label { font-size: 12px; color: #a1a1aa; }
+    input {
+      background: #0e0e10;
+      border: 1px solid #27272a;
+      border-radius: 8px;
+      padding: 11px 12px;
+      font-size: 14px;
+      color: #fff;
+      outline: none;
+      transition: border-color .15s;
+    }
+    input:focus { border-color: #F5D900; }
+    button {
+      margin-top: 6px;
+      background: #F5D900;
+      color: #000;
+      border: 0;
+      border-radius: 8px;
+      padding: 12px;
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: background .15s, transform .05s;
+    }
+    button:hover { background: #ffe51a; }
+    button:active { transform: scale(0.99); }
+    .err {
+      margin-top: 12px;
+      padding: 10px 12px;
+      border-radius: 8px;
+      background: #3f1d1d;
+      color: #fca5a5;
+      font-size: 13px;
+      display: none;
+    }
+    .err.show { display: block; }
+    footer {
+      text-align: center;
+      font-size: 11px;
+      color: #52525b;
+      margin-top: 22px;
+    }
   </style>
 </head>
 <body>
   <div class="card">
-    <div class="logo">NORIKS</div>
-    <h1>go<span>CPC</span></h1>
-    <p class="sub">Google Ads campaign manager</p>
-    <form id="f">
-      <label for="user">Username</label>
-      <input id="user" name="user" autocomplete="username" required>
-      <label for="pass">Password</label>
-      <input id="pass" name="pass" type="password" autocomplete="current-password" required>
-      <button type="submit" id="btn">Sign in</button>
-      <div class="err" id="err"></div>
+    <div class="brand">
+      <div class="brand-pill">NORIKS</div>
+      <h1>go<span>CPC</span></h1>
+      <p class="sub">Google Ads dashboard + uploader</p>
+    </div>
+    <form id="loginForm">
+      <div>
+        <label for="u">Uporabnik</label>
+        <input id="u" name="username" type="text" autocomplete="username" autofocus required />
+      </div>
+      <div>
+        <label for="p">Geslo</label>
+        <input id="p" name="password" type="password" autocomplete="current-password" required />
+      </div>
+      <button type="submit">Prijava</button>
+      <div id="err" class="err"></div>
     </form>
+    <footer>gocpc.noriks.com</footer>
   </div>
   <script>
-    const f=document.getElementById('f'),btn=document.getElementById('btn'),err=document.getElementById('err');
-    f.addEventListener('submit',async(e)=>{
+    const form = document.getElementById('loginForm');
+    const errEl = document.getElementById('err');
+    form.addEventListener('submit', async (e) => {
       e.preventDefault();
-      err.classList.remove('show');
-      btn.disabled=true;btn.textContent='Signing in...';
-      try{
-        const r=await fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user:f.user.value,pass:f.pass.value})});
-        if(r.ok){location.href='/';return;}
-        const d=await r.json();err.textContent=d.error||'Login failed';err.classList.add('show');
-      }catch(e){err.textContent=e.message;err.classList.add('show');}
-      btn.disabled=false;btn.textContent='Sign in';
+      errEl.classList.remove('show');
+      const fd = new FormData(form);
+      try {
+        const res = await fetch('/api/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            username: fd.get('username'),
+            password: fd.get('password'),
+          }),
+        });
+        if (res.ok) {
+          window.location.href = '/';
+        } else {
+          const data = await res.json().catch(() => ({}));
+          errEl.textContent = data.error || 'Napaka pri prijavi';
+          errEl.classList.add('show');
+        }
+      } catch (err) {
+        errEl.textContent = err.message;
+        errEl.classList.add('show');
+      }
     });
   </script>
 </body>
