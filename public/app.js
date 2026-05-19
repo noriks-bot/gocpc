@@ -133,7 +133,13 @@ async function api(path, opts = {}) {
 
 // Client-side cache layer (localStorage) — instant render + background refresh
 const CLIENT_CACHE_TTL_MS = 10 * 60 * 1000;
-const CACHE_KEY_PREFIX = 'gocpc:v1:';
+const CACHE_KEY_PREFIX = 'gocpc:v2:';
+// Clear old cache versions on boot
+try {
+  Object.keys(localStorage).forEach(k => {
+    if (k.startsWith('gocpc:') && !k.startsWith(CACHE_KEY_PREFIX)) localStorage.removeItem(k);
+  });
+} catch (e) { /* ignore */ }
 
 function cacheLoad(path) {
   try {
